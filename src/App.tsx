@@ -657,17 +657,21 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (currentArchive) params.set('a', currentArchive.name);
+    else if (allPosts.length > 0 && username) params.set('a', username); // Handle local archives too
+    
     if (activeTab !== 'posts') params.set('t', activeTab);
     if (selectedPost) params.set('p', selectedPost.id);
 
     const newSearch = params.toString();
-    const currentSearch = window.location.search.replace(/^\?/, '');
+    // Normalize currentSearch to ensure we don't have mismatch due to encoding
+    const currentSearch = new URLSearchParams(window.location.search).toString();
     
     if (newSearch !== currentSearch) {
+      console.log(`[Permalink] Updating URL state: ?${newSearch}`);
       const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
       window.history.replaceState(null, '', newUrl);
     }
-  }, [currentArchive?.name, activeTab, selectedPost?.id]);
+  }, [currentArchive?.name, username, allPosts.length, activeTab, selectedPost?.id]);
 
   // Read state from URL on mount/initialization
   const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
