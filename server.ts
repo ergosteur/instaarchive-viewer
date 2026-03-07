@@ -43,8 +43,13 @@ app.get('/api/archives', (req, res) => {
     const archives = items
       .filter(item => {
         const isDir = item.isDirectory();
-        if (!isDir) console.log(`[API] Skipping non-directory: ${item.name}`);
-        return isDir;
+        const isHidden = item.name.startsWith('.') || item.name.startsWith('@') || item.name.startsWith('_');
+        if (!isDir) return false;
+        if (isHidden) {
+          console.log(`[API] Skipping system/hidden directory: ${item.name}`);
+          return false;
+        }
+        return true;
       })
       .map(item => {
         // Try to find a profile pic or first image for the thumbnail

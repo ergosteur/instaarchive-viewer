@@ -113,6 +113,7 @@ interface ServerArchive {
 
 const ArchiveDashboard = ({ 
   archives, 
+  localArchives = [],
   cachedArchives,
   onSelect,
   onLocalSelect,
@@ -120,6 +121,7 @@ const ArchiveDashboard = ({
   isScanning
 }: { 
   archives: ServerArchive[]; 
+  localArchives?: any[];
   cachedArchives: Set<string>;
   onSelect: (archive: ServerArchive) => void;
   onLocalSelect: () => void;
@@ -155,7 +157,7 @@ const ArchiveDashboard = ({
         {archives.map((archive) => {
           const isCached = cachedArchives.has(archive.name);
           return (
-            <div key={archive.path} className="relative group">
+            <div key={archive.path} className="relative group text-black">
               <button
                 onClick={() => onSelect(archive)}
                 disabled={isScanning}
@@ -201,6 +203,47 @@ const ArchiveDashboard = ({
             </div>
           );
         })}
+
+        {/* Local Cached Archives */}
+        {localArchives.map((archive) => (
+          <div key={archive.name} className="relative group text-black">
+            <button
+              onClick={onLocalSelect}
+              disabled={isScanning}
+              className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-white shadow-sm border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all flex flex-col text-left disabled:opacity-50"
+            >
+              <div className="flex-1 bg-gray-100 overflow-hidden relative">
+                {archive.profileMetadata.profilePic ? (
+                  <img src={archive.profileMetadata.profilePic} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-300">
+                    <Grid3X3 size={48} strokeWidth={1} />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/20 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <FolderOpen size={32} fill="white" className="text-white" />
+                </div>
+                <div className="absolute bottom-2 left-2 bg-gray-800/80 text-white px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest backdrop-blur-sm">
+                  Local Cache
+                </div>
+              </div>
+              <div className="p-4 space-y-1">
+                <span className="font-bold text-sm block truncate uppercase tracking-tight text-black/80">{archive.name}</span>
+                <span className="text-[10px] text-gray-400 uppercase tracking-widest">{archive.fileCount} indexed</span>
+              </div>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClearCache(archive.name);
+              }}
+              className="absolute top-2 right-2 p-2 bg-white/90 hover:bg-red-50 hover:text-red-500 text-gray-400 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all z-20"
+              title="Clear Cache"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -278,7 +321,7 @@ const StoryViewer = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-[#1a1a1a] flex items-center justify-center overflow-hidden"
+      className="fixed inset-0 z-[100] bg-[#1a1a1a] flex items-center justify-center overflow-hidden text-white"
       onClick={onClose}
     >
       <div className="absolute inset-0 z-0">
@@ -358,7 +401,7 @@ const StoryViewer = ({
           </div>
         </div>
 
-        <div className="w-full h-full flex items-center justify-center pointer-events-none">
+        <div className="w-full h-full flex items-center justify-center pointer-events-none text-white">
           {story.media[0].type === 'video' ? (
             <video 
               ref={videoRef}
@@ -404,82 +447,51 @@ const VideoThumbnail = ({ url, className }: { url: string; className?: string })
 
   useEffect(() => {
     if (thumbnail || !containerRef.current) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsInView(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '200px' }
-    );
-
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setIsInView(true); observer.disconnect(); }
+    }, { rootMargin: '200px' });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [thumbnail]);
 
   useEffect(() => {
     if (thumbnail || !isInView) return;
-
     const video = document.createElement('video');
-    video.src = `${url}#t=0.1`;
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-    
+    video.src = `${url}#t=0.1`; video.preload = 'metadata'; video.muted = true; video.playsInline = true;
     const captureFrame = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
         if (ctx && video.videoWidth > 0) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-          thumbnailCache.set(url, dataUrl);
-          setThumbnail(dataUrl);
+          thumbnailCache.set(url, dataUrl); setThumbnail(dataUrl);
         }
-      } catch (err) {
-      } finally {
-        cleanup();
-      }
+      } catch (err) {} finally { cleanup(); }
     };
-
-    const handleLoadedMetadata = () => { video.currentTime = 0.1; };
-    const handleSeeked = () => { captureFrame(); };
+    const handleLoadedMetadata = () => video.currentTime = 0.1;
+    const handleSeeked = () => captureFrame();
     const cleanup = () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('seeked', handleSeeked);
-      // Using removeAttribute is safer than src = '' to stop loading without warnings
       video.removeAttribute('src'); 
       video.load();
     };
-
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('seeked', handleSeeked);
     video.addEventListener('error', cleanup);
-
     const timeout = setTimeout(() => { if (!thumbnailCache.has(url)) cleanup(); }, 5000);
     return () => { clearTimeout(timeout); cleanup(); };
   }, [url, thumbnail, isInView]);
 
-  if (!thumbnail) {
-    return (
-      <div ref={containerRef} className={cn("w-full h-full bg-gray-100 flex items-center justify-center", className)}>
-        <Play size={20} className="text-gray-300" fill="currentColor" />
-      </div>
-    );
-  }
-
-  return (
-    <img 
-      src={thumbnail} 
-      alt="" 
-      className={cn("w-full h-full object-cover transition-transform duration-500 group-hover:scale-110", className)}
-      referrerPolicy="no-referrer"
-    />
+  if (!thumbnail) return (
+    <div ref={containerRef} className={cn("w-full h-full bg-gray-100 flex items-center justify-center", className)}>
+      <Play size={20} className="text-gray-300" fill="currentColor" />
+    </div>
   );
+
+  return <img src={thumbnail} alt="" className={cn("w-full h-full object-cover transition-transform duration-500 group-hover:scale-110", className)} referrerPolicy="no-referrer" />;
 };
 
 const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; className?: string; isFullView?: boolean }) => {
@@ -487,12 +499,11 @@ const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; class
   const sizingClass = isFullView ? "w-full h-auto block" : "w-full h-full object-cover";
   const mediaStyle = { transform: 'translateZ(0)' };
 
-  // Guard against empty URLs
   if (!file.url) return <div className={cn("bg-gray-100 flex items-center justify-center", sizingClass)}><Play size={24} className="text-gray-300" /></div>;
 
   if (file.type === 'video') {
     return (
-      <div className="relative w-full h-full flex items-center justify-center group/video">
+      <div className="relative w-full h-full flex items-center justify-center group/video text-black">
         <video src={file.url} className={cn("transition-all duration-300", sizingClass, className)} style={mediaStyle} playsInline autoPlay muted={isMuted} loop controls />
         <button onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }} className="absolute bottom-16 right-4 z-30 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full backdrop-blur-md transition-all md:opacity-0 md:group-hover/video:opacity-100">
           {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
@@ -538,14 +549,14 @@ const PostModal = ({
         {hasPrevPost && onPrevPost && <button onClick={(e) => { e.stopPropagation(); onPrevPost(); }} className="hidden md:block fixed left-4 md:left-10 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-50 transition-transform hover:scale-110 active:scale-90"><ChevronLeft size={48} strokeWidth={1.5} /></button>}
         {hasNextPost && onNextPost && <button onClick={(e) => { e.stopPropagation(); onNextPost(); }} className="hidden md:block fixed right-4 md:right-10 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-50 transition-transform hover:scale-110 active:scale-90"><ChevronRight size={48} strokeWidth={1.5} /></button>}
         <motion.div drag="y" dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.15} onDragEnd={(e, { offset, velocity }) => { if (offset.y > 200 || velocity.y > 800) onClose(); }} className="bg-black flex flex-col md:flex-row w-full max-w-6xl h-auto md:rounded-sm overflow-hidden shadow-2xl relative text-black" onClick={e => e.stopPropagation()}>
-          <div className="relative bg-black flex items-center justify-center group overflow-hidden w-full h-auto">
-            <div className="w-full grid grid-cols-1 grid-rows-1">
+          <div className="relative bg-black flex items-center justify-center group overflow-hidden w-full h-auto text-black">
+            <div className="w-full grid grid-cols-1 grid-rows-1 text-black">
               <AnimatePresence initial={false} custom={direction}>
                 <motion.div key={`${post.id}-${currentIndex}`} custom={direction} variants={variants} initial="enter" animate="center" exit="exit" transition={{ x: { type: "spring", stiffness: 300, damping: 30 } }} drag="x" dragDirectionLock dragConstraints={{ left: 0, right: 0 }} dragElastic={0.5} onDragEnd={(e, { offset, velocity }) => {
                   const s = swipePower(offset.x, velocity.x);
                   if (s < -15000) { if (currentIndex < post.media.length - 1) paginate(1); else if (hasNextPost && onNextPost && s < -40000) onNextPost(); }
                   else if (s > 15000) { if (currentIndex > 0) paginate(-1); else if (hasPrevPost && onPrevPost && s > 40000) onPrevPost(); }
-                }} className="col-start-1 row-start-1 w-full flex items-center justify-center cursor-grab active:cursor-grabbing relative">
+                }} className="col-start-1 row-start-1 w-full flex items-center justify-center cursor-grab active:cursor-grabbing relative text-black">
                   <MediaRenderer file={post.media[currentIndex]} isFullView={true} />
                 </motion.div>
               </AnimatePresence>
@@ -554,27 +565,27 @@ const PostModal = ({
               <>
                 {currentIndex > 0 && <button onClick={(e) => { e.stopPropagation(); paginate(-1); }} className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 z-30"><ChevronLeft size={24} /></button>}
                 {currentIndex < post.media.length - 1 && <button onClick={(e) => { e.stopPropagation(); paginate(1); }} className="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 z-30"><ChevronRight size={24} /></button>}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-30">{post.media.map((_, i) => <div key={i} className={cn("w-1.5 h-1.5 rounded-full transition-all", i === currentIndex ? "bg-blue-500 scale-125" : "bg-white/40 shadow-sm")} />)}</div>
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-30 text-black">{post.media.map((_, i) => <div key={i} className={cn("w-1.5 h-1.5 rounded-full transition-all", i === currentIndex ? "bg-blue-500 scale-125" : "bg-white/40 shadow-sm")} />)}</div>
               </>
             )}
           </div>
-          <div className="w-full md:w-96 bg-white flex flex-col border-l border-gray-200 overflow-hidden shrink-0">
+          <div className="w-full md:w-96 bg-white flex flex-col border-l border-gray-200 overflow-hidden shrink-0 text-black">
             <div className="p-3 md:p-4 border-b border-gray-100 flex items-center justify-between shrink-0 text-black">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-purple-600 p-0.5"><div className="w-full h-full rounded-full bg-white p-0.5"><div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden text-[10px] font-bold uppercase">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <span>{post.username[0]}</span>}</div></div></div>
-                <span className="font-semibold text-sm">{post.username}</span>
+              <div className="flex items-center gap-3 text-black">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-purple-600 p-0.5 text-black"><div className="w-full h-full rounded-full bg-white p-0.5 text-black"><div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden text-[10px] font-bold uppercase text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover text-black" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div></div></div>
+                <span className="font-semibold text-sm text-black">{post.username}</span>
               </div>
-              <MoreHorizontal size={20} className="text-gray-500" />
+              <MoreHorizontal size={20} className="text-gray-500 text-black" />
             </div>
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 min-h-0 md:max-h-[60vh] text-black">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <span>{post.username[0]}</span>}</div>
-                <div className="text-sm"><span className="font-semibold mr-2">{post.username}</span><span className="whitespace-pre-wrap">{post.caption}</span><div className="mt-2 text-xs text-gray-500 uppercase tracking-tight">{format(parseISO(post.date), 'MMMM d, yyyy')}</div></div>
+              <div className="flex gap-3 text-black">
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div>
+                <div className="text-sm text-black"><span className="font-semibold mr-2 text-black">{post.username}</span><span className="whitespace-pre-wrap text-black">{post.caption}</span><div className="mt-2 text-xs text-gray-500 uppercase tracking-tight text-black">{format(parseISO(post.date), 'MMMM d, yyyy')}</div></div>
               </div>
             </div>
             <div className="p-3 md:p-4 border-t border-gray-100 space-y-3 shrink-0 bg-white text-black">
-              <div className="flex items-center justify-between"><div className="flex items-center gap-4"><Heart size={24} className="hover:text-gray-500 cursor-pointer" /><MessageCircle size={24} className="hover:text-gray-500 cursor-pointer" /><Play size={24} className="hover:text-gray-500 cursor-pointer" /></div><Bookmark size={24} className="hover:text-gray-500 cursor-pointer" /></div>
-              <div className="text-sm flex items-center gap-2 text-black"><span className="font-semibold text-black">Archived Post</span><span className="text-gray-400 font-normal text-xs">{post.id}</span></div>
+              <div className="flex items-center justify-between text-black"><div className="flex items-center gap-4 text-black"><Heart size={24} className="hover:text-gray-500 cursor-pointer text-black" /><MessageCircle size={24} className="hover:text-gray-500 cursor-pointer text-black" /><Play size={24} className="hover:text-gray-500 cursor-pointer text-black" /></div><Bookmark size={24} className="hover:text-gray-500 cursor-pointer text-black" /></div>
+              <div className="text-sm flex items-center gap-2 text-black"><span className="font-semibold text-black">Archived Post</span><span className="text-gray-400 font-normal text-xs text-black">{post.id}</span></div>
             </div>
           </div>
         </motion.div>
@@ -603,12 +614,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'posts' | 'reels' | 'saved'>('posts');
   const [serverArchives, setServerArchives] = useState<ServerArchive[]>([]);
   const [cachedArchives, setCachedArchives] = useState<Set<string>>(new Set());
+  const [localCachedArchives, setLocalCachedArchives] = useState<any[]>([]);
   const [isServerMode, setIsServerMode] = useState(false);
   const [currentArchive, setCurrentArchive] = useState<ServerArchive | null>(null);
+
   const [scannedCount, setScannedCount] = useState(0);
   const [totalFiles, setTotalFiles] = useState(0);
   const [scannedFilesLog, setScannedFilesLog] = useState<string[]>([]);
-  const [scanningPhase, setScanningPhase] = useState<'Indexing' | 'Parsing' | ''>('');
+  const [scanningPhase, setScanningPhase] = useState<'Indexing' | 'Parsing' | 'Checking Cache' | ''>('');
   const [currentScanningImage, setCurrentScanningImage] = useState<string | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -618,6 +631,15 @@ export default function App() {
     try {
       const keys = await idb.keys();
       setCachedArchives(new Set(keys.map(String)));
+
+      const locals: any[] = [];
+      for (const key of keys) {
+        const data: any = await idb.get(key);
+        if (data && data.isLocal) {
+          locals.push(data);
+        }
+      }
+      setLocalCachedArchives(locals);
     } catch (e) {}
   }, []);
 
@@ -634,7 +656,6 @@ export default function App() {
     const hasData = allPosts.length > 0;
     
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Always show warning if data is loaded and browser tries to UNLOAD (refresh/close/navigate away)
       if (hasData) {
         const message = 'Are you sure you want to leave? Your current archive session will be cleared.';
         e.preventDefault();
@@ -645,13 +666,10 @@ export default function App() {
 
     const handlePopState = (e: PopStateEvent) => {
       if (allPosts.length > 0) {
-        // If we are IN an archive, the first "Back" just takes us to explorer
         setAllPosts([]);
         setAllStories([]);
         setCurrentArchive(null);
         resetProfileState();
-        // We don't pushState here, so the NEXT "Back" will actually try to leave the page
-        // and thus trigger the handleBeforeUnload warning.
       }
     };
 
@@ -659,7 +677,6 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
 
     if (hasData) {
-      // Create a history entry so the "Back" button can be intercepted once
       window.history.pushState({ inApp: true }, '');
     }
 
@@ -691,6 +708,7 @@ export default function App() {
   const handleFiles = async (files: ArchiveFile[], archiveContext?: ServerArchive) => {
     if (!files || files.length === 0) return;
     setIsScanning(true); resetProfileState(); setScanningPhase('Indexing'); setScannedCount(0); setTotalFiles(files.length); setScannedFilesLog([]); setGridOffset(0);
+    console.log(`[Scanner] Starting scan of ${files.length} files...`);
     await new Promise(resolve => setTimeout(resolve, 100));
 
     const parseXZFile = async (file: ArchiveFile) => {
@@ -698,7 +716,7 @@ export default function App() {
         const stream = new XzReadableStream(file.stream());
         const response = new Response(stream);
         return await response.json();
-      } catch (e) { return null; }
+      } catch (e) { console.error(`[Scanner] XZ Parse Error:`, file.name, e); return null; }
     };
 
     let lastImageUpdateTime = 0;
@@ -710,12 +728,15 @@ export default function App() {
       }
     };
 
+    const isImage = (name: string) => /\.(jpg|jpeg|png|webp|gif|bmp|svg|tiff)$/i.test(name);
+    const isVideo = (name: string) => /\.(mp4|webm|ogv|mov)$/i.test(name);
+    const isMedia = (name: string) => isImage(name) || isVideo(name);
+
     try {
       const postsMap = new Map<string, Partial<Post>>();
       const mediaFilesMap = new Map<string, ArchiveFile>();
       const discoveredProfilePics: { name: string, url: string }[] = [];
       
-      // Local metadata tracking to avoid stale React state in the cache object
       let localFullName = '';
       let localBio = '';
       let localExternalUrl = '';
@@ -737,68 +758,62 @@ export default function App() {
       let format: 'export' | 'instaloader' | 'json' | 'unknown' = 'unknown';
       let jsonFiles: ArchiveFile[] = [];
 
-      let i = 0;
-      for (const file of files) {
-        i++; if (i % 50 === 0 || i === files.length) { setScannedCount(i); setScannedFilesLog(prev => [`Indexed ${file.name}`, ...prev.slice(0, 19)]); }
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (i % 50 === 0 || i === files.length - 1) {
+          setScannedCount(i + 1);
+          setScannedFilesLog(prev => [`Indexed ${file.name}`, ...prev.slice(0, 19)]);
+        }
         const lowerName = file.name.toLowerCase();
+        
         if (lowerName.endsWith('.json') || lowerName.endsWith('.json.xz')) {
           jsonFiles.push(file);
           if (lowerName.includes('posts_1') || lowerName.includes('reels_1') || lowerName.includes('stories_1')) format = 'json';
-          else if (format === 'unknown' && (lowerName.includes('story') || lowerName.includes('post'))) format = 'json';
           continue;
         }
-        if (lowerName.includes('_profile_pic.jpg')) {
-          const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: 'image/jpeg' }));
-          discoveredProfilePics.push({ name: file.name, url });
-          if (!detectedUsername && file.webkitRelativePath) {
-            const parts = file.webkitRelativePath.split(/[/\\]/);
-            if (parts.length > 1) { detectedUsername = parts[0]; setUsername(detectedUsername); }
-          }
-          if (format === 'unknown') format = 'instaloader';
-          continue;
+
+        if (file.name.match(exportRegex)) format = 'export';
+        else if (file.name.match(instaloaderRegex)) format = 'instaloader';
+
+        if (lowerName.includes('_profile_pic.jpg') || (detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`)) {
+          try {
+            const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: 'image/jpeg' }));
+            discoveredProfilePics.push({ name: file.name, url });
+            if (format === 'unknown' && lowerName.includes('_profile_pic.jpg')) format = 'instaloader';
+          } catch(e) {}
         }
-        const exportMatch = file.name.match(exportRegex);
-        if (exportMatch) {
-          if (!detectedUsername || detectedUsername === currentArchive?.name) { detectedUsername = exportMatch[2]; setUsername(detectedUsername); }
-          format = 'export';
-        }
-        const loaderMatch = file.name.match(instaloaderRegex);
-        if (loaderMatch && format === 'unknown') format = 'instaloader';
-        if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].some(ext => lowerName.endsWith(ext))) {
+
+        if (isMedia(file.name)) {
           mediaFilesMap.set(file.webkitRelativePath || file.name, file);
         }
       }
 
-      if (format === 'json' || format === 'instaloader') {
-        setScanningPhase('Parsing'); setTotalFiles(jsonFiles.length);
-        let filesProcessed = 0;
-        for (const jsonFile of jsonFiles) {
-          filesProcessed++;
+      console.log(`[Scanner] Format Detection Complete. Result: ${format}. Media indexed: ${mediaFilesMap.size}`);
+
+      if (jsonFiles.length > 0 && (format === 'json' || format === 'instaloader')) {
+        setScanningPhase('Parsing');
+        for (let i = 0; i < jsonFiles.length; i++) {
+          const jsonFile = jsonFiles[i];
+          setScannedCount(i + 1);
+          setScannedFilesLog(prev => [`Parsing ${jsonFile.name}`, ...prev.slice(0, 19)]);
           try {
             const data = jsonFile.name.endsWith('.xz') ? await parseXZFile(jsonFile) : JSON.parse(await jsonFile.text());
             if (!data) continue;
             const items = Array.isArray(data) ? data : (data.media || [data]);
             const isStoriesFile = jsonFile.name.toLowerCase().includes('stories');
-            if (jsonFiles.length === 1) setTotalFiles(items.length);
-            else { setScannedCount(filesProcessed); setScannedFilesLog(prev => [`Parsing ${jsonFile.name}`, ...prev.slice(0, 19)]); }
 
             if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
               const node = data.node; const iphone = node.iphone_struct || {};
-              localFullName = node.full_name || '';
-              localBio = node.biography || iphone.biography || '';
+              localFullName = node.full_name || ''; localBio = node.biography || iphone.biography || '';
               localExternalUrl = node.external_url || '';
               localFollowerCount = node.edge_followed_by?.count || iphone.follower_count || 0;
               localFollowingCount = node.edge_follow?.count || iphone.following_count || 0;
-              
               setFullName(localFullName); setBio(localBio); setExternalUrl(localExternalUrl);
               setFollowerCount(localFollowerCount); setFollowingCount(localFollowingCount);
               if (!Array.isArray(data)) continue;
             }
 
             for (const [idx, item] of items.entries()) {
-              if (jsonFiles.length === 1 && (idx % 10 === 0 || idx === items.length - 1)) {
-                setScannedCount(idx + 1); setScannedFilesLog(prev => [`Parsing metadata for ${item.id || item.node?.id || 'item'}`, ...prev.slice(0, 19)]);
-              }
               const mediaList = item.media || [item];
               const postId = item.node?.id || item.id || item.title || `post_${idx}_${Date.now()}`;
               const date = item.creation_timestamp ? new Date(item.creation_timestamp * 1000).toISOString().split('T')[0] : (item.node?.taken_at_timestamp ? new Date(item.node.taken_at_timestamp * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
@@ -809,10 +824,17 @@ export default function App() {
                 const uri = m.uri; let matchedFile: ArchiveFile | undefined;
                 if (uri) { for (const [path, f] of mediaFilesMap.entries()) { if (path.endsWith(uri) || uri.endsWith(path)) { matchedFile = f; break; } } }
                 if (!matchedFile) { const id = item.node?.id || item.id; if (id) { for (const [path, f] of mediaFilesMap.entries()) { if (f.name.includes(id)) { matchedFile = f; break; } } } }
-                if (!matchedFile) { const jsonBase = jsonFile.name.substring(0, jsonFile.name.lastIndexOf('.')); for (const ext of ['mp4', 'jpg', 'jpeg', 'png', 'webp']) { const possibleName = `${jsonBase}.${ext}`; for (const [path, f] of mediaFilesMap.entries()) { if (f.name.toLowerCase() === possibleName.toLowerCase()) { matchedFile = f; break; } } if (matchedFile) break; } }
+                if (!matchedFile) { 
+                  const jsonBase = jsonFile.name.substring(0, jsonFile.name.lastIndexOf('.'));
+                  for (const ext of ['mp4', 'webm', 'jpg', 'jpeg', 'png', 'webp', 'gif']) {
+                    const possibleName = `${jsonBase}.${ext}`;
+                    for (const [path, f] of mediaFilesMap.entries()) { if (f.name.toLowerCase() === possibleName.toLowerCase()) { matchedFile = f; break; } }
+                    if (matchedFile) break;
+                  }
+                }
 
                 if (matchedFile) {
-                  const type = matchedFile.name.toLowerCase().endsWith('mp4') ? 'video' : 'image';
+                  const type = isVideo(matchedFile.name) ? 'video' : 'image';
                   const url = matchedFile.url || URL.createObjectURL(new Blob([await matchedFile.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
                   const existingMedia = post.media!.find(media => media.index === mIdx + 1);
                   if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, url, type, index: mIdx + 1 } : media); }
@@ -821,65 +843,51 @@ export default function App() {
               }
               if (post.media!.length > 0) postsMap.set(postId, post);
             }
-          } catch (e) {}
+          } catch (e) { console.error(`[Scanner] Error parsing JSON ${jsonFile.name}:`, e); }
         }
       } 
       
-      if (format !== 'json') {
-        setScanningPhase('Parsing'); setScannedCount(0); setTotalFiles(files.length);
+      if (format === 'export' || format === 'instaloader') {
+        setScanningPhase('Parsing');
         const CHUNK_SIZE = 100;
         for (let j_start = 0; j_start < files.length; j_start += CHUNK_SIZE) {
           const end = Math.min(j_start + CHUNK_SIZE, files.length);
-          setScannedCount(j_start); setScannedFilesLog(prev => [`Processing batch ${Math.floor(j_start/CHUNK_SIZE) + 1}...`, ...prev.slice(0, 19)]);
+          setScannedCount(j_start);
+          setScannedFilesLog(prev => [`Batch ${Math.floor(j_start/CHUNK_SIZE) + 1} processing...`, ...prev.slice(0, 19)]);
           for (let j = j_start; j < end; j++) {
             const file = files[j]; const lowerName = file.name.toLowerCase();
-            if (detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`) {
-              const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: 'image/jpeg' }));
-              if (!discoveredProfilePics.some(p => p.name === file.name)) discoveredProfilePics.push({ name: file.name, url });
-              continue;
-            }
+            const expMatch = file.name.match(exportRegex);
+            const insMatch = file.name.match(instaloaderRegex);
+            if (!expMatch && !insMatch) continue;
+
             let postId = '', date = '', user = detectedUsername || 'archived_user', index = 1, ext = '', isStory = lowerName.includes('story') || file.webkitRelativePath.toLowerCase().includes('stories');
-            if (format === 'export') {
-              const match = file.name.match(exportRegex);
-              if (!match) continue;
-              const [_, dMatch, uMatch, pMatch, iStrMatch, sMatch, eMatch] = match;
+            if (expMatch) {
+              const [_, dMatch, uMatch, pMatch, iStrMatch, sMatch, eMatch] = expMatch;
               date = dMatch; user = uMatch; postId = pMatch; index = iStrMatch ? parseInt(iStrMatch, 10) : 1; if (sMatch) isStory = true; ext = eMatch;
-            } else if (format === 'instaloader') {
-              const match = file.name.match(instaloaderRegex);
-              if (!match) continue;
-              const [_, pMatch, iStrMatch, sMatch, eMatch] = match;
+            } else if (insMatch) {
+              const [_, pMatch, iStrMatch, sMatch, eMatch] = insMatch;
               postId = pMatch; date = pMatch.split('_')[0]; index = iStrMatch ? parseInt(iStrMatch, 10) : 1; if (sMatch) isStory = true; ext = eMatch;
-            } else continue;
+            }
 
             let post = postsMap.get(postId);
             if (!post) { post = { id: postId, date, username: user, caption: '', media: [], isStory }; postsMap.set(postId, post); }
             else if (isStory) post.isStory = true;
 
             const lowerExt = ext.toLowerCase();
-            if (lowerExt === 'txt') post.caption = await file.text();
-            else if (lowerExt === 'json' || lowerName.endsWith('.json.xz')) {
+            if (lowerExt === 'txt') {
+              try { post.caption = await file.text(); } catch(e) {}
+            } else if (lowerExt === 'json' || lowerName.endsWith('.json.xz')) {
               try {
                 const data = lowerName.endsWith('.xz') ? await parseXZFile(file) : JSON.parse(await file.text());
-                if (!data) continue;
-                const node = data.node || data; const iphone = node.iphone_struct || {};
-                if (node.edge_media_to_caption?.edges?.[0]?.node?.text) post.caption = node.edge_media_to_caption.edges[0].node.text;
-                else if (node.caption?.text) post.caption = node.caption.text;
-                else if (iphone.caption?.text) post.caption = iphone.caption.text;
-                if (checkIsStory(data) || checkIsStory(node) || checkIsStory(data.instaloader) || checkIsStory(iphone)) post.isStory = true;
-                if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
-                  const n = data.node; const iph = n.iphone_struct || {};
-                  localFullName = n.full_name || '';
-                  localBio = n.biography || iph.biography || '';
-                  localExternalUrl = n.external_url || '';
-                  localFollowerCount = n.edge_followed_by?.count || iph.follower_count || 0;
-                  localFollowingCount = n.edge_follow?.count || iph.following_count || 0;
-                  
-                  setFullName(localFullName); setBio(localBio); setExternalUrl(localExternalUrl);
-                  setFollowerCount(localFollowerCount); setFollowingCount(localFollowingCount);
+                if (data) {
+                  const node = data.node || data; const iphone = node.iphone_struct || {};
+                  const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || node.caption?.text || iphone.caption?.text || '';
+                  if (captionText) post.caption = captionText;
+                  if (checkIsStory(data) || checkIsStory(node) || checkIsStory(data.instaloader) || checkIsStory(iphone)) post.isStory = true;
                 }
               } catch (e) {}
-            } else if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].includes(lowerExt)) {
-              const type = lowerExt === 'mp4' ? 'video' : 'image';
+            } else if (isMedia(file.name)) {
+              const type = isVideo(file.name) ? 'video' : 'image';
               const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
               if (type === 'image') throttledSetScanningImage(url);
               const existingMedia = post.media!.find(m => m.index === index);
@@ -891,12 +899,54 @@ export default function App() {
         }
       }
 
+      if (postsMap.size === 0) {
+        console.log(`[Scanner] No posts found with standard patterns. Using mediaFilesMap: ${mediaFilesMap.size}`);
+        setScanningPhase('Parsing');
+        const genericGroupingMap = new Map<string, ArchiveFile[]>();
+        for (const [key, file] of mediaFilesMap.entries()) {
+          const match = file.name.match(/^(.*?)(?:(_|-|\s)+(\d+))?\.(.+)$/);
+          let baseName = file.name;
+          if (match && match[3]) { baseName = match[1].trim(); }
+          else { baseName = file.name.substring(0, file.name.lastIndexOf('.')); }
+          if (!genericGroupingMap.has(baseName)) genericGroupingMap.set(baseName, []);
+          genericGroupingMap.get(baseName)!.push(file);
+        }
+        console.log(`[Scanner] Generic grouping found ${genericGroupingMap.size} base groups.`);
+        let processedGroups = 0;
+        for (const [baseName, groupFiles] of genericGroupingMap.entries()) {
+          processedGroups++;
+          if (processedGroups % 10 === 0 || processedGroups === genericGroupingMap.size) {
+            setScannedCount(Math.floor((processedGroups / (genericGroupingMap.size || 1)) * (files.length || 1)));
+            setScannedFilesLog(prev => [`Grouping: ${baseName}`, ...prev.slice(0, 19)]);
+          }
+          groupFiles.sort((a, b) => {
+            const na = a.name.match(/[_-](\d+)\.\w+$/)?.[1];
+            const nb = b.name.match(/[_-](\d+)\.\w+$/)?.[1];
+            if (na && nb) return parseInt(na, 10) - parseInt(nb, 10);
+            return a.name.localeCompare(b.name);
+          });
+          const CAROUSEL_MAX = 20;
+          for (let j = 0; j < groupFiles.length; j += CAROUSEL_MAX) {
+            const batch = groupFiles.slice(j, j + CAROUSEL_MAX);
+            const partSuffix = groupFiles.length > CAROUSEL_MAX ? `_part${Math.floor(j/CAROUSEL_MAX) + 1}` : '';
+            const postId = `${baseName}${partSuffix}`;
+            const post: Post = { id: postId, date: new Date().toISOString().split('T')[0], username: detectedUsername || 'archived_user', caption: baseName, media: [], thumbnail: '' };
+            for (const [idx, file] of batch.entries()) {
+              const type = isVideo(file.name) ? 'video' : 'image';
+              const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
+              if (type === 'image') throttledSetScanningImage(url);
+              post.media.push({ name: file.name, url, type, index: idx + 1 });
+            }
+            post.thumbnail = post.media[0].url;
+            postsMap.set(postId, post);
+          }
+        }
+      }
+
       if (discoveredProfilePics.length > 0) {
         discoveredProfilePics.sort((a, b) => b.name.localeCompare(a.name));
         const urls = discoveredProfilePics.map(p => p.url);
-        setAllProfilePics(urls); 
-        localProfilePic = urls[0];
-        setProfilePic(localProfilePic);
+        setAllProfilePics(urls); localProfilePic = urls[0]; setProfilePic(localProfilePic);
       }
 
       const finalUsername = detectedUsername || 'archived_user';
@@ -906,47 +956,45 @@ export default function App() {
       });
 
       const posts = allItems.filter(p => !p.isStory).sort((a, b) => b.date.localeCompare(a.date));
-      const stories = allItems.filter(p => p.isStory).sort((a, b) => a.date.localeCompare(b.date));
+      const stories = allItems.filter(p => p.isStory).sort((a, b) => b.date.localeCompare(b.date));
 
       setAllPosts(posts); setAllStories(stories); setVisiblePostsCount(90);
       console.log(`[Scanner] Finalized ${posts.length} posts and ${stories.length} stories.`);
 
       const archiveToCache = archiveContext || currentArchive;
-      if (archiveToCache) {
-        if (posts.length === 0 && stories.length === 0) {
-          console.warn(`[Cache] Skipping cache save for ${archiveToCache.name} because no items were found.`);
-          return;
+      const isLocal = !archiveToCache;
+      const cacheKey = archiveToCache ? archiveToCache.name : (detectedUsername || 'local_archive');
+
+      if (cacheKey && (posts.length > 0 || stories.length > 0)) {
+        console.log(`[Cache] Saving data for ${cacheKey} to persistent storage...`);
+        let cacheThumbnail = localProfilePic;
+        if (isLocal && posts.length > 0 && posts[0].media[0].type === 'image') {
+          try {
+            const img = new Image(); img.src = posts[0].media[0].url;
+            await new Promise((res) => { img.onload = res; img.onerror = res; });
+            if (img.complete && img.width > 0) {
+              const canvas = document.createElement('canvas'); const size = 200;
+              canvas.width = size; canvas.height = size;
+              const ctx = canvas.getContext('2d');
+              if (ctx) { ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, size, size); cacheThumbnail = canvas.toDataURL('image/jpeg', 0.7); }
+            }
+          } catch (e) {}
         }
-        
-        console.log(`[Cache] Saving data for ${archiveToCache.name} to persistent storage...`);
+
         const cacheData = { 
-          name: archiveToCache.name, 
-          fileCount: archiveToCache.fileCount, 
-          posts, 
-          stories, 
-          profileMetadata: { 
-            username: finalUsername, 
-            fullName: localFullName, 
-            bio: localBio, 
-            followerCount: localFollowerCount, 
-            followingCount: localFollowingCount, 
-            externalUrl: localExternalUrl, 
-            profilePic: localProfilePic 
-          }, 
-          allProfilePics: discoveredProfilePics.map(p => p.url), 
+          name: cacheKey, isLocal, fileCount: archiveToCache ? archiveToCache.fileCount : files.length, 
+          posts: isLocal ? [] : posts, stories: isLocal ? [] : stories,
+          profileMetadata: { username: finalUsername, fullName: localFullName, bio: localBio, followerCount: localFollowerCount, followingCount: localFollowingCount, externalUrl: localExternalUrl, profilePic: isLocal ? cacheThumbnail : localProfilePic }, 
+          allProfilePics: isLocal ? (cacheThumbnail ? [cacheThumbnail] : []) : discoveredProfilePics.map(p => p.url), 
           timestamp: Date.now() 
         };
         try {
-          await idb.set(archiveToCache.name, cacheData);
-          console.log(`[Cache] Data for ${archiveToCache.name} saved successfully.`);
+          await idb.set(cacheKey, cacheData);
+          console.log(`[Cache] Data saved successfully.`);
           await refreshCachedArchives();
-        } catch (e) {
-          console.error(`[Cache] Failed to save to IndexedDB:`, e);
-        }
+        } catch (e) { console.error(`[Cache] Save error:`, e); }
       }
-    } catch (err) {
-      console.error(`[Scanner] Critical error during scan:`, err);
-    } finally { setIsScanning(false); }
+    } catch (err) { console.error(`[Scanner] Critical error:`, err); } finally { setIsScanning(false); }
   };
 
   const loadServerArchive = async (archive: ServerArchive) => {
@@ -1030,7 +1078,15 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-8 md:py-12 text-black">
         {allPosts.length === 0 && !isScanning ? (
           isServerMode ? (
-            <ArchiveDashboard archives={serverArchives} cachedArchives={cachedArchives} onSelect={loadServerArchive} onLocalSelect={triggerFileSelect} onClearCache={clearCache} isScanning={isScanning} />
+            <ArchiveDashboard 
+              archives={serverArchives} 
+              localArchives={localCachedArchives}
+              cachedArchives={cachedArchives} 
+              onSelect={loadServerArchive} 
+              onLocalSelect={triggerFileSelect} 
+              onClearCache={clearCache} 
+              isScanning={isScanning} 
+            />
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
               <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400"><Grid3X3 size={48} strokeWidth={1} /></div>
@@ -1050,41 +1106,41 @@ export default function App() {
           </div>
         ) : (
           <div className="space-y-12 text-black">
-            <header className="flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-20 px-4">
-              <div className={cn("w-24 h-24 md:w-36 md:h-36 rounded-full p-1 cursor-pointer transition-transform active:scale-95", allStories.length > 0 ? "bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600" : "bg-gray-200" )} onClick={() => allStories.length > 0 && setShowStoryViewer(true)}><div className="w-full h-full rounded-full bg-white p-1"><div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">{profilePic ? <img src={profilePic} alt={username} className="w-full h-full object-cover" onError={() => setProfilePic(null)} referrerPolicy="no-referrer" /> : <span className="text-3xl font-bold text-gray-400 uppercase">{username[0]}</span>}</div></div></div>
-              <div className="flex-1 space-y-6 text-center md:text-left">
-                <div className="flex flex-col md:flex-row items-center gap-4">
-                  <h2 className="text-2xl font-light tracking-wide">{username}</h2>
-                  <div className="flex gap-2">
+            <header className="flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-20 px-4 text-black">
+              <div className={cn("w-24 h-24 md:w-36 md:h-36 rounded-full p-1 cursor-pointer transition-transform active:scale-95", allStories.length > 0 ? "bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600" : "bg-gray-200" )} onClick={() => allStories.length > 0 && setShowStoryViewer(true)}><div className="w-full h-full rounded-full bg-white p-1"><div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center overflow-hidden text-black">{profilePic ? <img src={profilePic} alt={username} className="w-full h-full object-cover" onError={() => setProfilePic(null)} referrerPolicy="no-referrer" /> : <span className="text-3xl font-bold text-gray-400 uppercase">{username[0]}</span>}</div></div></div>
+              <div className="flex-1 space-y-6 text-center md:text-left text-black">
+                <div className="flex flex-col md:flex-row items-center gap-4 text-black">
+                  <h2 className="text-2xl font-light tracking-wide text-black">{username}</h2>
+                  <div className="flex gap-2 text-black">
                     <input type="file" ref={profilePicInputRef} className="hidden" accept="image/*" onChange={handleProfilePicChange} />
                     {allProfilePics.length === 0 && <button onClick={() => profilePicInputRef.current?.click()} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">Set Profile Picture</button>}
                     {allProfilePics.length > 1 && <button onClick={cycleProfilePic} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"><Layers size={16} />Next Profile Pic</button>}
                   </div>
                 </div>
-                <div className="flex justify-center md:justify-start gap-10 text-sm md:text-base"><div><span className="font-semibold text-black/80">{allPosts.length}</span> posts</div><div><span className="font-semibold text-black/80">{followerCount.toLocaleString()}</span> followers</div><div><span className="font-semibold text-black/80">{followingCount.toLocaleString()}</span> following</div></div>
-                <div className="space-y-1 text-black/80"><div className="font-semibold">{fullName || `@${username}`}</div><div className="text-gray-600 whitespace-pre-wrap max-w-sm mx-auto md:mx-0 text-sm md:text-base">{bio || 'Archived profile viewer for local files.'}</div>{externalUrl && <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="text-blue-900 font-semibold text-sm block hover:underline truncate max-w-[250px]">{externalUrl.replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>
+                <div className="flex justify-center md:justify-start gap-10 text-sm md:text-base text-black"><div><span className="font-semibold text-black/80">{allPosts.length}</span> posts</div><div><span className="font-semibold text-black/80">{followerCount.toLocaleString()}</span> followers</div><div><span className="font-semibold text-black/80">{followingCount.toLocaleString()}</span> following</div></div>
+                <div className="space-y-1 text-black/80"><div className="font-semibold text-black">{fullName || `@${username}`}</div><div className="text-gray-600 whitespace-pre-wrap max-w-sm mx-auto md:mx-0 text-sm md:text-base text-black">{bio || 'Archived profile viewer for local files.'}</div>{externalUrl && <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="text-blue-900 font-semibold text-sm block hover:underline truncate max-w-[250px]">{externalUrl.replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>
               </div>
             </header>
 
-            <div className="border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex justify-center gap-12 flex-1">
+            <div className="border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4 text-black">
+              <div className="flex justify-center gap-12 flex-1 text-black">
                 <button onClick={() => handleTabChange('posts')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all", activeTab === 'posts' ? "border-black text-black" : "border-transparent text-gray-400")}><Grid3X3 size={14} />Posts</button>
                 <button onClick={() => handleTabChange('reels')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all", activeTab === 'reels' ? "border-black text-black" : "border-transparent text-gray-400")}><Play size={14} />Reels</button>
                 <button onClick={() => handleTabChange('saved')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all", activeTab === 'saved' ? "border-black text-black" : "border-transparent text-gray-400")}><Bookmark size={14} />Saved</button>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-[2px] md:gap-[2px]">
+            <div className="grid grid-cols-3 gap-[2px] md:gap-[2px] text-black">
               {activeTab === 'posts' && Array.from({ length: gridOffset }).map((_, i) => (<div key={`blank-${i}`} className={cn("bg-gray-100/50 border border-dashed border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase tracking-tighter", gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]")}>Blank</div>))}
               {visiblePosts.map((post) => (
                 <motion.div key={post.id} layoutId={post.id} onClick={() => setSelectedPost(post)} className={cn("relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300", activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"))}>
-                  {post.media[0].type === 'video' ? <VideoThumbnail url={post.media[0].url} /> : <img src={post.thumbnail} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" referrerPolicy="no-referrer" />}
-                  <div className="absolute top-2 right-2 flex gap-1.5 z-10">{post.media.length > 1 && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm"><Layers size={16} /></div>}{post.media.some(m => m.type === 'video') && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm"><Play size={16} fill="white" /></div>}</div>
+                  {post.media[0].type === 'video' ? <VideoThumbnail url={post.media[0].url} /> : <img src={post.thumbnail} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 text-black" referrerPolicy="no-referrer" />}
+                  <div className="absolute top-2 right-2 flex gap-1.5 z-10 text-black">{post.media.length > 1 && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm"><Layers size={16} /></div>}{post.media.some(m => m.type === 'video') && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm"><Play size={16} fill="white" /></div>}</div>
                   <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold z-20 text-black"><div className="flex items-center gap-2"><Heart fill="white" size={20} /><span>-</span></div><div className="flex items-center gap-2"><MessageCircle fill="white" size={20} /><span>-</span></div></div>
                 </motion.div>
               ))}
             </div>
-            {filteredPosts.length > visiblePostsCount && <div className="flex justify-center pt-12"><button onClick={loadMore} className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm text-black">Load More</button></div>}
+            {filteredPosts.length > visiblePostsCount && <div className="flex justify-center pt-12 text-black"><button onClick={loadMore} className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm text-black">Load More</button></div>}
           </div>
         )}
       </main>
@@ -1093,8 +1149,8 @@ export default function App() {
       <AnimatePresence>{showStoryViewer && allStories.length > 0 && <StoryViewer stories={allStories} onClose={() => setShowStoryViewer(false)} profilePic={profilePic} />}</AnimatePresence>
 
       {!isScanning && (
-        <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-xs text-gray-400 space-y-4">
-          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
+        <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-xs text-gray-400 space-y-4 text-black">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight text-black"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
           <div className="text-black/40">© 2026 InstaArchive Viewer</div>
         </footer>
       )}
