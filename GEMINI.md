@@ -5,6 +5,7 @@
 **InstaArchive** is a high-performance, React-based Progressive Web App (PWA) designed to browse and explore archived Instagram data with a native-feeling interface. It supports both local directory loading and self-hosted server modes.
 
 ### Key Technical Features
+- **Permalinks:** Full synchronization between application state and URL query parameters (`?a=`, `?t=`, `?p=`). Supports deep-linking to archives, tabs, and specific posts.
 - **Persistent Caching:** Uses `idb-keyval` (IndexedDB) to cache parsed metadata and server-side media URLs. Subsequent loads of the same archive are instant.
 - **Glassy Scanner UI:** A custom-built glassmorphism scanning dashboard with throttled (1s) dynamic blurred backgrounds and a high-density system log.
 - **Support for Multiple Formats:** Recognizes official Instagram export structures and Instaloader regex-based naming conventions.
@@ -30,6 +31,13 @@
 - `npm run build`: Generate the production-ready build in the `dist` folder.
 - `npm run server`: Start the backend server to scan `./_sample-archives`.
 - `npm run lint`: Execute TypeScript type-checking.
+
+## Troubleshooting Cache (PWA)
+Since the app is a PWA, the browser may cache old JavaScript bundles. If new features don't appear:
+1. Open DevTools -> Application -> Service Workers.
+2. Click **Unregister** for the localhost service worker.
+3. Go to **Storage** and click **Clear site data**.
+4. Perform a Hard Refresh (`Ctrl + Shift + R`).
 
 ## Production Deployment
 The project is containerized and available on GHCR. It expects a volume mount at `/archives` containing subdirectories for each user.
