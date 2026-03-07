@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Copy source and build frontend
+# Copy source and build (frontend and server)
 COPY . .
 RUN npm run build
 
@@ -27,12 +27,12 @@ RUN npm ci --omit=dev
 
 # Copy built assets and server
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/server.ts ./
+COPY --from=build /app/dist-server/server.js ./server.js
 
 # Ensure archives directory exists
 RUN mkdir -p /archives
 
 EXPOSE 3000
 
-# Start server using tsx
-CMD ["npx", "tsx", "server.ts"]
+# Start server
+CMD ["node", "server.js"]

@@ -11,12 +11,18 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const ARCHIVES_DIR = process.env.ARCHIVES_DIR || path.join(__dirname, '_sample-archives');
+const ARCHIVES_DIR = path.resolve(process.env.ARCHIVES_DIR || path.join(__dirname, '_sample-archives'));
+
+console.log(`[Server] Initializing...`);
+console.log(`[Server] Environment ARCHIVES_DIR: ${process.env.ARCHIVES_DIR}`);
+console.log(`[Server] Resolved ARCHIVES_DIR: ${ARCHIVES_DIR}`);
 
 // Ensure archives directory exists
 if (!fs.existsSync(ARCHIVES_DIR)) {
-  console.warn(`Warning: Archives directory not found at ${ARCHIVES_DIR}. Creating it...`);
+  console.warn(`[Server] Warning: Archives directory not found at ${ARCHIVES_DIR}. Creating it...`);
   fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+} else {
+  console.log(`[Server] Archives directory exists.`);
 }
 
 app.use(express.json());
@@ -24,13 +30,21 @@ app.use(express.json());
 // API: List archives (subdirectories in ARCHIVES_DIR)
 app.get('/api/archives', (req, res) => {
   try {
+    console.log(`[API] Listing archives from ${ARCHIVES_DIR}...`);
     const items = fs.readdirSync(ARCHIVES_DIR, { withFileTypes: true });
+    console.log(`[API] Found ${items.length} total items in archives directory.`);
+    
     const archives = items
-      .filter(item => item.isDirectory())
+      .filter(item => {
+        const isDir = item.isDirectory();
+        if (!isDir) console.log(`[API] Skipping non-directory: ${item.name}`);
+        return isDir;
+      })
       .map(item => {
         // Try to find a profile pic or first image for the thumbnail
         const archivePath = path.join(ARCHIVES_DIR, item.name);
         const files = fs.readdirSync(archivePath);
+        console.log(`[API] Found archive: ${item.name} (${files.length} files)`);
         
         let thumbnail = '';
         const profilePic = files.find(f => f.toLowerCase().includes('_profile_pic.jpg') || f.toLowerCase() === `${item.name.toLowerCase()}.jpg`);
@@ -48,9 +62,11 @@ app.get('/api/archives', (req, res) => {
           fileCount: files.length
         };
       });
+    
+    console.log(`[API] Returning ${archives.length} validated archives.`);
     res.json(archives);
   } catch (err) {
-    console.error('Error listing archives:', err);
+    console.error('[API] Error listing archives:', err);
     res.status(500).json({ error: 'Failed to list archives' });
   }
 });
