@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import os from 'os';
 
 dotenv.config();
 
@@ -14,13 +15,18 @@ const PORT = process.env.PORT || 3001;
 const ARCHIVES_DIR = path.resolve(process.env.ARCHIVES_DIR || path.join(__dirname, '_sample-archives'));
 
 console.log(`[Server] Initializing...`);
+console.log(`[Server] Running as user: ${os.userInfo().username} (UID: ${os.userInfo().uid}, GID: ${os.userInfo().gid})`);
 console.log(`[Server] Environment ARCHIVES_DIR: ${process.env.ARCHIVES_DIR}`);
 console.log(`[Server] Resolved ARCHIVES_DIR: ${ARCHIVES_DIR}`);
 
 // Ensure archives directory exists
 if (!fs.existsSync(ARCHIVES_DIR)) {
   console.warn(`[Server] Warning: Archives directory not found at ${ARCHIVES_DIR}. Creating it...`);
-  fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+  } catch (err) {
+    console.error(`[Server] Failed to create archives directory:`, err);
+  }
 } else {
   console.log(`[Server] Archives directory exists.`);
 }
@@ -43,31 +49,42 @@ app.get('/api/archives', (req, res) => {
       .map(item => {
         // Try to find a profile pic or first image for the thumbnail
         const archivePath = path.join(ARCHIVES_DIR, item.name);
-        const files = fs.readdirSync(archivePath);
-        console.log(`[API] Found archive: ${item.name} (${files.length} files)`);
-        
-        let thumbnail = '';
-        const profilePic = files.find(f => f.toLowerCase().includes('_profile_pic.jpg') || f.toLowerCase() === `${item.name.toLowerCase()}.jpg`);
-        if (profilePic) {
-          thumbnail = `/archives/${item.name}/${profilePic}`;
-        } else {
-          const firstImage = files.find(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
-          if (firstImage) thumbnail = `/archives/${item.name}/${firstImage}`;
-        }
+        try {
+          const files = fs.readdirSync(archivePath);
+          console.log(`[API] Found archive: ${item.name} (${files.length} files)`);
+          
+          let thumbnail = '';
+          const profilePic = files.find(f => f.toLowerCase().includes('_profile_pic.jpg') || f.toLowerCase() === `${item.name.toLowerCase()}.jpg`);
+          if (profilePic) {
+            thumbnail = `/archives/${item.name}/${profilePic}`;
+          } else {
+            const firstImage = files.find(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
+            if (firstImage) thumbnail = `/archives/${item.name}/${firstImage}`;
+          }
 
-        return {
-          name: item.name,
-          thumbnail,
-          path: item.name,
-          fileCount: files.length
-        };
-      });
+          return {
+            name: item.name,
+            thumbnail,
+            path: item.name,
+            fileCount: files.length
+          };
+        } catch (e) {
+          console.error(`[API] Could not read subdirectory ${item.name}:`, e);
+          return null;
+        }
+      })
+      .filter(Boolean);
     
     console.log(`[API] Returning ${archives.length} validated archives.`);
     res.json(archives);
-  } catch (err) {
-    console.error('[API] Error listing archives:', err);
-    res.status(500).json({ error: 'Failed to list archives' });
+  } catch (err: any) {
+    if (err.code === 'EACCES') {
+      console.error(`[API] Permission Denied! The server (UID ${os.userInfo().uid}) cannot read ${ARCHIVES_DIR}.`);
+      console.error(`[API] Hint: If using Linux/Docker, check folder permissions (chmod 755) or SELinux context (append :z to your volume mount).`);
+    } else {
+      console.error('[API] Error listing archives:', err);
+    }
+    res.status(500).json({ error: 'Permission denied or failed to list archives' });
   }
 });
 

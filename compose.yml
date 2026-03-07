@@ -1,11 +1,10 @@
 services:
   instaarchive:
-    image: ghcr.io/${GITHUB_REPOSITORY:-ergosteur/instaarchive-viewer}:latest
-    build: .
+    image: ghcr.io/ergosteur/instaarchive-viewer:latest
     ports:
       - "3000:3000"
     volumes:
-      - ./archives:/archives:ro
+      - ./archives:/archives:ro,z
     environment:
       - PORT=3000
       - ARCHIVES_DIR=/archives

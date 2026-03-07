@@ -25,6 +25,8 @@ docker run -d \
   ghcr.io/ergosteur/instaarchive-viewer:latest
 ```
 
+> **Note for Linux/SELinux users:** If you see "Permission Denied" in the logs, append `,z` to your volume mount: `-v /path/to/archives:/archives:ro,z`
+
 ### Docker Compose
 
 Create a `compose.yml` file:
@@ -36,13 +38,22 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./archives:/archives:ro
+      - ./archives:/archives:ro,z # ,z handles SELinux permissions
 ```
 
-Run with:
-```bash
-docker compose up -d
-```
+### Troubleshooting Permissions
+
+If the app shows "No Archives Found" and logs `EACCES: permission denied`:
+
+1. **Check Directory Permissions**: Ensure the archive folder is world-readable:
+   ```bash
+   chmod -R 755 /path/to/archives
+   ```
+2. **SELinux (Fedora/RHEL/CentOS)**: Use the `:z` flag in your volume mount as shown above.
+3. **User Mapping**: You can force the container to run as your host user:
+   ```bash
+   docker run --user $(id -u):$(id -g) ...
+   ```
 
 ## Supported Archive Structure
 
