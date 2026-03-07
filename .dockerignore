@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.github
+_sample-archives
+Dockerfile
+.dockerignore
+README.md
+GEMINI.md
+metadata.json
