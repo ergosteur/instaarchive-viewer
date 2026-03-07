@@ -174,7 +174,7 @@ const ArchiveDashboard = ({
                   </div>
                   
                   {isCached && (
-                    <div className="absolute top-2 left-2 bg-blue-500 text-white p-1 rounded-md shadow-lg flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider z-10 pr-2">
+                    <div className="absolute top-2 left-2 bg-blue-500 text-white p-1 rounded-md shadow-lg flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider z-10 pr-2 opacity-0 group-hover:opacity-100 transition-all">
                       <Zap size={10} fill="currentColor" />
                       Cached
                     </div>
@@ -628,6 +628,42 @@ export default function App() {
     fetch('/api/archives').then(res => res.json()).then(data => { if (Array.isArray(data) && data.length > 0) { setServerArchives(data); setIsServerMode(true); } }).catch(() => setIsServerMode(false));
     refreshCachedArchives();
   }, [refreshCachedArchives]);
+
+  // Intercept back button and page exit when in an archive
+  useEffect(() => {
+    const inArchive = allPosts.length > 0;
+    
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (inArchive) {
+        e.preventDefault();
+        e.returnValue = ''; // Trigger browser confirmation dialog
+      }
+    };
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (inArchive) {
+        // Instead of going back, just exit the archive
+        setAllPosts([]);
+        setAllStories([]);
+        setCurrentArchive(null);
+        resetProfileState();
+        // Stay on the same page
+        window.history.pushState(null, '');
+      }
+    };
+
+    if (inArchive) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      window.addEventListener('popstate', handlePopState);
+      // Add a history entry so the back button has something to pop
+      window.history.pushState(null, '');
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [allPosts.length, resetProfileState]);
 
   const filteredPosts = useMemo(() => {
     if (activeTab === 'reels') return allPosts.filter(p => p.media.length === 1 && p.media[0].type === 'video');
