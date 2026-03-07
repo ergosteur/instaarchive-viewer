@@ -21,6 +21,9 @@
 - **Backend:** Express, tsx (for server-side scanning)
 - **Decompression:** xz-decompress (WASM)
 
+## Known Issues
+- **Generic Collection Parser:** Currently unreliable for non-Instagram archive structures (e.g., folders with arbitrary media filenames). It may fail to correctly identify or group posts in some environments.
+
 ## Commands
 - `npm install`: Install project dependencies.
 - `npm run dev`: Start the local development server on port 3000.
