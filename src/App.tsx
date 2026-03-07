@@ -22,6 +22,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, parseISO } from 'date-fns';
+// @ts-ignore
+import { XzReadableStream } from 'xz-decompress';
 
 // --- Utilities ---
 function cn(...inputs: ClassValue[]) {
@@ -332,7 +334,8 @@ const PostModal = ({
   onNextPost,
   onPrevPost,
   hasNextPost,
-  hasPrevPost
+  hasPrevPost,
+  profilePic
 }: { 
   post: Post; 
   onClose: () => void; 
@@ -341,6 +344,7 @@ const PostModal = ({
   onPrevPost?: () => void;
   hasNextPost?: boolean;
   hasPrevPost?: boolean;
+  profilePic: string | null;
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullView, setIsFullView] = useState(initialFullView);
@@ -562,8 +566,12 @@ const PostModal = ({
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-purple-600 p-0.5">
                   <div className="w-full h-full rounded-full bg-white p-0.5">
-                    <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                      <span className="text-[10px] font-bold uppercase">{post.username[0]}</span>
+                    <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden text-[10px] font-bold uppercase">
+                      {profilePic ? (
+                        <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span>{post.username[0]}</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -574,8 +582,12 @@ const PostModal = ({
 
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 min-h-0 md:max-h-[60vh]">
               <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase">
-                  {post.username[0]}
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden">
+                  {profilePic ? (
+                    <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <span>{post.username[0]}</span>
+                  )}
                 </div>
                 <div className="text-sm">
                   <span className="font-semibold mr-2">{post.username}</span>
@@ -681,12 +693,24 @@ export default function App() {
     
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    const parseXZFile = async (file: File) => {
+      try {
+        const decompressedStream = new XzReadableStream(file.stream());
+        const response = new Response(decompressedStream);
+        return await response.json();
+      } catch (e) {
+        console.error("Error decompressing XZ file:", file.name, e);
+        return null;
+      }
+    };
+
     try {
       const postsMap = new Map<string, Partial<Post>>();
       const mediaFilesMap = new Map<string, File>();
       
       // Format 1: Instagram Export (e.g., 2021-01-01_username - ID - 1.jpg)
-      const exportRegex = /^(\d{4}-\d{2}-\d{2})_(.+?) - ([a-zA-Z0-9_-]+)(?: - (\d+))?(?: - (story))?\.(.+)$/;
+      // Updated to be slightly more permissive with the shortcode/ID part
+      const exportRegex = /^(\d{4}-\d{2}-\d{2})_(.+?) - (.+?)(?: - (\d+))?(?: - (story))?\.(.+)$/;
       
       // Format 2: Instaloader (e.g., 2017-03-31_12-42-56_UTC.jpg or 2020-12-05_22-11-27_UTC_1.jpg)
       const instaloaderRegex = /^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_UTC)(?:_(\d+))?(?:_(story))?\.(.+)$/;
@@ -698,10 +722,13 @@ export default function App() {
         const productType = obj.product_type || "";
         return (
           obj.is_story === true ||
+          obj.is_reel_media === true ||
           typeName.includes('Story') ||
           obj.audience === "MediaAudience.DEFAULT" ||
           nodeType === "StoryItem" ||
-          productType === "story"
+          productType === "story" ||
+          typeName === "GraphStoryVideo" ||
+          typeName === "GraphStoryImage"
         );
       };
 
@@ -709,27 +736,26 @@ export default function App() {
       let format: 'export' | 'instaloader' | 'json' | 'unknown' = 'unknown';
       let jsonFiles: File[] = [];
 
-      // First pass: detect format and collect files
+      // First pass: detect format, username, and collect files
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const lowerName = file.name.toLowerCase();
 
-        // Check for official JSON format or profile JSON
-        if (lowerName.endsWith('.json')) {
+        // Check for official JSON format or profile JSON (including .xz)
+        if (lowerName.endsWith('.json') || lowerName.endsWith('.json.xz')) {
           jsonFiles.push(file);
           if (lowerName.includes('posts_1') || lowerName.includes('reels_1') || lowerName.includes('stories_1')) {
             format = 'json';
           } else if (format === 'unknown' && (lowerName.includes('story') || lowerName.includes('post'))) {
-            // Likely Instaloader or other JSON-per-post format
             format = 'json';
           }
           continue;
         }
 
-        // Check for profile pic in Instaloader format
+        // Check for profile pic in Instaloader format or generic username.jpg
         if (lowerName.includes('_profile_pic.jpg')) {
           setProfilePic(URL.createObjectURL(file));
-          if (file.webkitRelativePath) {
+          if (!detectedUsername && file.webkitRelativePath) {
             const parts = file.webkitRelativePath.split('/');
             if (parts.length > 1) {
               detectedUsername = parts[0];
@@ -742,8 +768,10 @@ export default function App() {
 
         const exportMatch = file.name.match(exportRegex);
         if (exportMatch) {
-          detectedUsername = exportMatch[2];
-          setUsername(detectedUsername);
+          if (!detectedUsername) {
+            detectedUsername = exportMatch[2];
+            setUsername(detectedUsername);
+          }
           format = 'export';
         }
 
@@ -761,7 +789,6 @@ export default function App() {
 
         // Store all media files for JSON format lookup
         if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].some(ext => lowerName.endsWith(ext))) {
-          // Store by relative path or just name
           const key = file.webkitRelativePath || file.name;
           mediaFilesMap.set(key, file);
         }
@@ -769,12 +796,15 @@ export default function App() {
 
       console.log(`Detected format: ${format}, Username: ${detectedUsername}`);
 
-      if (format === 'json') {
-        // Handle JSON format (Official Instagram Export)
+      if (format === 'json' || format === 'instaloader') {
+        // Handle JSON format (Official Instagram Export or Instaloader)
         for (const jsonFile of jsonFiles) {
           try {
-            const content = await jsonFile.text();
-            const data = JSON.parse(content);
+            const data = jsonFile.name.endsWith('.xz') 
+              ? await parseXZFile(jsonFile)
+              : JSON.parse(await jsonFile.text());
+            
+            if (!data) continue;
             
             // Check if it's a profile JSON
             if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
@@ -790,8 +820,6 @@ export default function App() {
               continue;
             }
 
-            // Official Instagram JSON structure is usually an array of objects
-            // Instaloader JSON is usually a single object
             const items = Array.isArray(data) ? data : (data.media || [data]);
             const isStoriesFile = jsonFile.name.toLowerCase().includes('stories');
             
@@ -808,6 +836,8 @@ export default function App() {
                             checkIsStory(item) || 
                             checkIsStory(item.node) ||
                             checkIsStory(data.instaloader) ||
+                            checkIsStory(item.node?.iphone_struct) ||
+                            checkIsStory(item.iphone_struct) ||
                             (item.media && Array.isArray(item.media) && item.media.some((m: any) => checkIsStory(m)));
 
               const post: Partial<Post> = {
@@ -864,7 +894,16 @@ export default function App() {
                 if (matchedFile) {
                   const url = URL.createObjectURL(matchedFile);
                   const type = matchedFile.name.toLowerCase().endsWith('mp4') ? 'video' : 'image';
-                  post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1 });
+                  // Deduplication check logic
+                  const existingMedia = post.media!.find(media => media.index === mIdx + 1);
+                  if (existingMedia) {
+                    if (type === 'video' && existingMedia.type === 'image') {
+                      // Replace image with video
+                      post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, url, type, index: mIdx + 1 } : media);
+                    }
+                  } else {
+                    post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1 });
+                  }
                 }
               });
 
@@ -876,7 +915,9 @@ export default function App() {
             console.error("Error parsing JSON file:", jsonFile.name, e);
           }
         }
-      } else {
+      } 
+      
+      if (format !== 'json') {
         // Handle Regex formats (Export or Instaloader)
         let matchedCount = 0;
         const CHUNK_SIZE = 100;
@@ -888,7 +929,8 @@ export default function App() {
             const file = files[j];
             const lowerName = file.name.toLowerCase();
             
-            if (format === 'export' && detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`) {
+            // Check for potential profile pic (username.jpg)
+            if (detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`) {
               setProfilePic(URL.createObjectURL(file));
               continue;
             }
@@ -914,8 +956,11 @@ export default function App() {
               const match = file.name.match(instaloaderRegex);
               if (!match) continue;
               const [_, postIdMatch, indexStrMatch, storyMatch, extMatch] = match;
+              // Group 1 is the consistent timestamp part (e.g. 2022-03-31_14-56-28_UTC)
+              // This is the correct ID to group .jpg, .mp4, and .json.xz files.
               postId = postIdMatch;
-              date = postId.split('_')[0];
+              
+              date = postIdMatch.split('_')[0];
               index = indexStrMatch ? parseInt(indexStrMatch, 10) : 1;
               if (storyMatch) isStory = true;
               ext = extMatch;
@@ -937,7 +982,6 @@ export default function App() {
               };
               postsMap.set(postId, post);
             } else if (isStory) {
-              // Update isStory flag if any file associated with this post indicates it's a story
               post.isStory = true;
             }
 
@@ -945,39 +989,51 @@ export default function App() {
             if (lowerExt === 'txt') {
               const text = await file.text();
               post.caption = text;
-            } else if (lowerExt === 'json') {
+            } else if (lowerExt === 'json' || lowerName.endsWith('.json.xz')) {
               try {
-                const content = await file.text();
-                const data = JSON.parse(content);
+                const data = lowerName.endsWith('.xz') 
+                  ? await parseXZFile(file)
+                  : JSON.parse(await file.text());
                 
-                // Extract caption
+                if (!data) continue;
+
                 const node = data.node || data;
+                const iphone = node.iphone_struct || {};
                 const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || 
                                    node.caption?.text || 
-                                   node.iphone_struct?.caption?.text || "";
+                                   iphone.caption?.text || "";
                 if (captionText) post.caption = captionText;
                 
-                // Update isStory if JSON confirms it
-                if (checkIsStory(data) || checkIsStory(data.node) || checkIsStory(data.instaloader)) {
+                if (checkIsStory(data) || checkIsStory(node) || checkIsStory(data.instaloader) || checkIsStory(iphone)) {
                   post.isStory = true;
                 }
                 
-                // Profile info check in case it's a profile JSON
+                // Check if this JSON contains profile info
                 if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
                   const n = data.node;
-                  const iphone = n.iphone_struct || {};
+                  const iph = n.iphone_struct || {};
                   setUsername(n.username || '');
                   setFullName(n.full_name || '');
-                  setBio(n.biography || iphone.biography || '');
+                  setBio(n.biography || iph.biography || '');
                   setExternalUrl(n.external_url || '');
-                  setFollowerCount(n.edge_followed_by?.count || iphone.follower_count || 0);
-                  setFollowingCount(n.edge_follow?.count || iphone.following_count || 0);
+                  setFollowerCount(n.edge_followed_by?.count || iph.follower_count || 0);
+                  setFollowingCount(n.edge_follow?.count || iph.following_count || 0);
                 }
               } catch (e) {}
             } else if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].includes(lowerExt)) {
               const url = URL.createObjectURL(file);
               const type = lowerExt === 'mp4' ? 'video' : 'image';
-              post.media!.push({ name: file.name, url, type, index });
+              
+              const existingMedia = post.media!.find(m => m.index === index);
+              if (existingMedia) {
+                // If we have an image and find a video for the same index, replace it
+                if (type === 'video' && existingMedia.type === 'image') {
+                  post.media = post.media!.map(m => m.index === index ? { name: file.name, url, type, index } : m);
+                }
+                // If we have a video and find an image, do nothing (keep video)
+              } else {
+                post.media!.push({ name: file.name, url, type, index });
+              }
             }
           }
           await new Promise(resolve => setTimeout(resolve, 0));
@@ -1325,6 +1381,7 @@ export default function App() {
             onPrevPost={onPrevPost}
             hasNextPost={postIndex < filteredPosts.length - 1}
             hasPrevPost={postIndex > 0}
+            profilePic={profilePic}
           />
         )}
       </AnimatePresence>
