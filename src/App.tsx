@@ -651,6 +651,56 @@ export default function App() {
     refreshCachedArchives();
   }, [refreshCachedArchives]);
 
+  // --- Permalink Synchronization ---
+
+  // Update URL based on state
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (currentArchive) params.set('a', currentArchive.name);
+    if (activeTab !== 'posts') params.set('t', activeTab);
+    if (selectedPost) params.set('p', selectedPost.id);
+
+    const newSearch = params.toString();
+    const currentSearch = window.location.search.replace(/^\?/, '');
+    
+    if (newSearch !== currentSearch) {
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      window.history.replaceState(null, '', newUrl);
+    }
+  }, [currentArchive?.name, activeTab, selectedPost?.id]);
+
+  // Read state from URL on mount/initialization
+  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+  useEffect(() => {
+    if (hasInitialLoaded || serverArchives.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const archiveName = params.get('a');
+    const tab = params.get('t');
+    const postId = params.get('p');
+
+    if (archiveName) {
+      const archive = serverArchives.find(a => a.name === archiveName);
+      if (archive) {
+        loadServerArchive(archive);
+        if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
+          setActiveTab(tab as any);
+        }
+      }
+    }
+    setHasInitialLoaded(true);
+  }, [serverArchives, hasInitialLoaded]);
+
+  // Auto-open post if postId is in URL and posts are loaded
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const postId = params.get('p');
+    if (postId && allPosts.length > 0 && !selectedPost) {
+      const post = allPosts.find(p => p.id === postId);
+      if (post) setSelectedPost(post);
+    }
+  }, [allPosts, selectedPost]);
+
   // Intercept back button and page exit
   useEffect(() => {
     const hasData = allPosts.length > 0;
