@@ -33,6 +33,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Types ---
+
 interface MediaFile {
   name: string;
   url: string;
@@ -50,7 +51,129 @@ interface Post {
   isStory?: boolean;
 }
 
+/**
+ * Common interface for both local File objects and remote server-side files.
+ */
+interface ArchiveFile {
+  name: string;
+  webkitRelativePath: string;
+  size: number;
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  stream(): ReadableStream<Uint8Array>;
+  url?: string;
+}
+
+class LocalArchiveFile implements ArchiveFile {
+  constructor(private file: File) {}
+  get name() { return this.file.name; }
+  get webkitRelativePath() { return this.file.webkitRelativePath; }
+  get size() { return this.file.size; }
+  text() { return this.file.text(); }
+  arrayBuffer() { return this.file.arrayBuffer(); }
+  stream() { return this.file.stream(); }
+}
+
+class RemoteArchiveFile implements ArchiveFile {
+  constructor(
+    public name: string,
+    public webkitRelativePath: string,
+    public size: number,
+    public url: string
+  ) {}
+  async text() {
+    const res = await fetch(this.url);
+    return res.text();
+  }
+  async arrayBuffer() {
+    const res = await fetch(this.url);
+    return res.arrayBuffer();
+  }
+  stream() {
+    const transform = new TransformStream();
+    fetch(this.url).then(res => {
+      if (res.body) res.body.pipeTo(transform.writable);
+      else transform.writable.getWriter().close();
+    });
+    return transform.readable;
+  }
+}
+
+interface ServerArchive {
+  name: string;
+  thumbnail: string;
+  path: string;
+  fileCount: number;
+}
+
 // --- Components ---
+
+const ArchiveDashboard = ({ 
+  archives, 
+  onSelect,
+  onLocalSelect,
+  isScanning
+}: { 
+  archives: ServerArchive[]; 
+  onSelect: (archive: ServerArchive) => void;
+  onLocalSelect: () => void;
+  isScanning: boolean;
+}) => {
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-12 space-y-12">
+      <div className="text-center space-y-4">
+        <h2 className="text-4xl font-bold tracking-tight font-serif italic">Your Archives</h2>
+        <p className="text-gray-500 max-w-lg mx-auto text-sm md:text-base">
+          Select a hosted archive to browse or upload a local directory from your computer.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
+        {/* Local Upload Card */}
+        <button 
+          onClick={onLocalSelect}
+          disabled={isScanning}
+          className="aspect-[3/4] rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all flex flex-col items-center justify-center gap-4 group disabled:opacity-50"
+        >
+          <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center text-gray-400 group-hover:text-blue-500 transition-colors">
+            <FolderOpen size={24} />
+          </div>
+          <div className="text-center">
+            <span className="font-bold text-sm block">Open Local</span>
+            <span className="text-[10px] text-gray-400 uppercase tracking-widest">Directory</span>
+          </div>
+        </button>
+
+        {/* Server Archives */}
+        {archives.map((archive) => (
+          <button
+            key={archive.path}
+            onClick={() => onSelect(archive)}
+            disabled={isScanning}
+            className="aspect-[3/4] rounded-xl overflow-hidden bg-white shadow-sm border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all flex flex-col text-left group disabled:opacity-50"
+          >
+            <div className="flex-1 bg-gray-100 overflow-hidden relative">
+              {archive.thumbnail ? (
+                <img src={archive.thumbnail} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-300">
+                  <Grid3X3 size={48} strokeWidth={1} />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Play size={32} fill="white" className="text-white" />
+              </div>
+            </div>
+            <div className="p-4 space-y-1">
+              <span className="font-bold text-sm block truncate uppercase tracking-tight">{archive.name}</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-widest">{archive.fileCount} items</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const StoryViewer = ({ 
   stories, 
@@ -266,7 +389,7 @@ const VideoThumbnail = ({ url, className }: { url: string; className?: string })
           observer.disconnect();
         }
       },
-      { rootMargin: '200px' } // Start loading before it's actually in view
+      { rootMargin: '200px' }
     );
 
     observer.observe(containerRef.current);
@@ -426,7 +549,6 @@ const PostModal = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
 
-  // Reset currentIndex when post changes
   useEffect(() => {
     setCurrentIndex(0);
   }, [post.id]);
@@ -483,8 +605,8 @@ const PostModal = ({
     })
   };
 
-  const swipeConfidenceThreshold = 15000; // Increased from 10000 for more intentional swipes
-  const interPostSwipeThreshold = 40000; // Higher threshold for switching between different posts
+  const swipeConfidenceThreshold = 15000;
+  const interPostSwipeThreshold = 40000;
   const swipePower = (offset: number, velocity: number) => {
     return Math.abs(offset) * velocity;
   };
@@ -506,7 +628,6 @@ const PostModal = ({
           <X size={24} className="md:w-8 md:h-8" />
         </button>
 
-        {/* Post Navigation Buttons - Hidden on Mobile */}
         {hasPrevPost && onPrevPost && (
           <button 
             onClick={(e) => { e.stopPropagation(); onPrevPost(); }}
@@ -531,7 +652,6 @@ const PostModal = ({
           dragConstraints={{ top: 0, bottom: 0 }}
           dragElastic={0.15}
           onDragEnd={(e, { offset, velocity }) => {
-            // Higher threshold for vertical dismissal to prevent accidental triggers during scroll
             if (offset.y > 200 || velocity.y > 800) {
               onClose();
             }
@@ -539,7 +659,6 @@ const PostModal = ({
           className="bg-black flex flex-col md:flex-row w-full max-w-6xl h-auto md:rounded-sm overflow-hidden shadow-2xl relative"
           onClick={e => e.stopPropagation()}
         >
-          {/* Media Section */}
           <div className="relative bg-black flex items-center justify-center group overflow-hidden w-full h-auto">
             <div className="w-full grid grid-cols-1 grid-rows-1">
               <AnimatePresence initial={false} custom={direction}>
@@ -559,7 +678,6 @@ const PostModal = ({
                   dragElastic={0.5}
                   onDragEnd={(e, { offset, velocity }) => {
                     const swipe = swipePower(offset.x, velocity.x);
-
                     if (swipe < -swipeConfidenceThreshold) {
                       if (currentIndex < post.media.length - 1) {
                         paginate(1);
@@ -614,7 +732,6 @@ const PostModal = ({
             )}
           </div>
 
-          {/* Info Section */}
           <div className="w-full md:w-96 bg-white flex flex-col border-l border-gray-200 overflow-hidden shrink-0">
             <div className="p-3 md:p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
@@ -691,8 +808,27 @@ export default function App() {
   const [gridAspectRatio, setGridAspectRatio] = useState<'1:1' | '3:4'>('1:1');
   const [gridOffset, setGridOffset] = useState(0);
   const [activeTab, setActiveTab] = useState<'posts' | 'reels' | 'saved'>('posts');
+  
+  const [serverArchives, setServerArchives] = useState<ServerArchive[]>([]);
+  const [isServerMode, setIsServerMode] = useState(false);
+  const [currentArchive, setCurrentArchive] = useState<ServerArchive | null>(null);
+
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const profilePicInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch('/api/archives')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setServerArchives(data);
+          setIsServerMode(true);
+        }
+      })
+      .catch(() => {
+        setIsServerMode(false);
+      });
+  }, []);
 
   const filteredPosts = useMemo(() => {
     if (activeTab === 'reels') {
@@ -701,7 +837,7 @@ export default function App() {
     if (activeTab === 'posts') {
       return allPosts.filter(p => !(p.media.length === 1 && p.media[0].type === 'video'));
     }
-    return []; // Saved tab is empty for now
+    return [];
   }, [allPosts, activeTab]);
 
   const handleTabChange = (tab: 'posts' | 'reels' | 'saved') => {
@@ -738,8 +874,8 @@ export default function App() {
     }
   };
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files) return;
+  const handleFiles = async (files: ArchiveFile[]) => {
+    if (!files || files.length === 0) return;
     setIsScanning(true);
     setProfilePic(null);
     setGridOffset(0);
@@ -747,7 +883,7 @@ export default function App() {
     
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    const parseXZFile = async (file: File) => {
+    const parseXZFile = async (file: ArchiveFile) => {
       try {
         const decompressedStream = new XzReadableStream(file.stream());
         const response = new Response(decompressedStream);
@@ -760,13 +896,9 @@ export default function App() {
 
     try {
       const postsMap = new Map<string, Partial<Post>>();
-      const mediaFilesMap = new Map<string, File>();
+      const mediaFilesMap = new Map<string, ArchiveFile>();
       
-      // Format 1: Instagram Export (e.g., 2021-01-01_username - ID - 1.jpg)
-      // Updated to be slightly more permissive with the shortcode/ID part
       const exportRegex = /^(\d{4}-\d{2}-\d{2})_(.+?) - (.+?)(?: - (\d+))?(?: - (story))?\.(.+)$/;
-      
-      // Format 2: Instaloader (e.g., 2017-03-31_12-42-56_UTC.jpg or 2020-12-05_22-11-27_UTC_1.jpg)
       const instaloaderRegex = /^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_UTC)(?:_(\d+))?(?:_(story))?\.(.+)$/;
 
       const checkIsStory = (obj: any): boolean => {
@@ -788,14 +920,11 @@ export default function App() {
 
       let detectedUsername = '';
       let format: 'export' | 'instaloader' | 'json' | 'unknown' = 'unknown';
-      let jsonFiles: File[] = [];
+      let jsonFiles: ArchiveFile[] = [];
 
-      // First pass: detect format, username, and collect files
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      for (const file of files) {
         const lowerName = file.name.toLowerCase();
 
-        // Check for official JSON format or profile JSON (including .xz)
         if (lowerName.endsWith('.json') || lowerName.endsWith('.json.xz')) {
           jsonFiles.push(file);
           if (lowerName.includes('posts_1') || lowerName.includes('reels_1') || lowerName.includes('stories_1')) {
@@ -806,11 +935,12 @@ export default function App() {
           continue;
         }
 
-        // Check for profile pic in Instaloader format or generic username.jpg
         if (lowerName.includes('_profile_pic.jpg')) {
-          setProfilePic(URL.createObjectURL(file));
+          const blob = new Blob([await file.arrayBuffer()], { type: 'image/jpeg' });
+          const url = file.url || URL.createObjectURL(blob);
+          setProfilePic(url);
           if (!detectedUsername && file.webkitRelativePath) {
-            const parts = file.webkitRelativePath.split('/');
+            const parts = file.webkitRelativePath.split(/[/\\]/);
             if (parts.length > 1) {
               detectedUsername = parts[0];
               setUsername(detectedUsername);
@@ -833,7 +963,7 @@ export default function App() {
         if (loaderMatch && format === 'unknown') {
           format = 'instaloader';
           if (!detectedUsername && file.webkitRelativePath) {
-            const parts = file.webkitRelativePath.split('/');
+            const parts = file.webkitRelativePath.split(/[/\\]/);
             if (parts.length > 1) {
               detectedUsername = parts[0];
               setUsername(detectedUsername);
@@ -841,17 +971,13 @@ export default function App() {
           }
         }
 
-        // Store all media files for JSON format lookup
         if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].some(ext => lowerName.endsWith(ext))) {
           const key = file.webkitRelativePath || file.name;
           mediaFilesMap.set(key, file);
         }
       }
 
-      console.log(`Detected format: ${format}, Username: ${detectedUsername}`);
-
       if (format === 'json' || format === 'instaloader') {
-        // Handle JSON format (Official Instagram Export or Instaloader)
         for (const jsonFile of jsonFiles) {
           try {
             const data = jsonFile.name.endsWith('.xz') 
@@ -860,11 +986,9 @@ export default function App() {
             
             if (!data) continue;
             
-            // Check if it's a profile JSON
             if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
               const node = data.node;
               const iphone = node.iphone_struct || {};
-              
               setUsername(node.username || '');
               setFullName(node.full_name || '');
               setBio(node.biography || iphone.biography || '');
@@ -877,7 +1001,7 @@ export default function App() {
             const items = Array.isArray(data) ? data : (data.media || [data]);
             const isStoriesFile = jsonFile.name.toLowerCase().includes('stories');
             
-            items.forEach((item: any, idx: number) => {
+            for (const [idx, item] of items.entries()) {
               const mediaList = item.media || [item];
               const postId = item.node?.id || item.id || item.title || `post_${idx}_${Date.now()}`;
               const date = item.creation_timestamp 
@@ -903,41 +1027,38 @@ export default function App() {
                 isStory,
               };
 
-              mediaList.forEach((m: any, mIdx: number) => {
+              for (const [mIdx, m] of mediaList.entries()) {
                 const uri = m.uri;
-                let matchedFile: File | undefined;
+                let matchedFile: ArchiveFile | undefined;
                 
-                // 1. Try URI matching (Official Export)
                 if (uri) {
-                  for (const [path, file] of mediaFilesMap.entries()) {
+                  for (const [path, f] of mediaFilesMap.entries()) {
                     if (path.endsWith(uri) || uri.endsWith(path)) {
-                      matchedFile = file;
+                      matchedFile = f;
                       break;
                     }
                   }
                 }
 
-                // 2. Try ID matching (Instaloader/Generic)
                 if (!matchedFile) {
                   const id = item.node?.id || item.id;
                   if (id) {
-                    for (const [path, file] of mediaFilesMap.entries()) {
-                      if (file.name.includes(id)) {
-                        matchedFile = file;
+                    for (const [path, f] of mediaFilesMap.entries()) {
+                      if (f.name.includes(id)) {
+                        matchedFile = f;
                         break;
                       }
                     }
                   }
                 }
 
-                // 3. Try JSON filename matching (Instaloader)
                 if (!matchedFile) {
                   const jsonBase = jsonFile.name.substring(0, jsonFile.name.lastIndexOf('.'));
                   for (const ext of ['mp4', 'jpg', 'jpeg', 'png', 'webp']) {
                     const possibleName = `${jsonBase}.${ext}`;
-                    for (const [path, file] of mediaFilesMap.entries()) {
-                      if (file.name.toLowerCase() === possibleName.toLowerCase()) {
-                        matchedFile = file;
+                    for (const [path, f] of mediaFilesMap.entries()) {
+                      if (f.name.toLowerCase() === possibleName.toLowerCase()) {
+                        matchedFile = f;
                         break;
                       }
                     }
@@ -946,25 +1067,24 @@ export default function App() {
                 }
 
                 if (matchedFile) {
-                  const url = URL.createObjectURL(matchedFile);
+                  const blob = new Blob([await matchedFile.arrayBuffer()], { type: matchedFile.name.endsWith('mp4') ? 'video/mp4' : 'image/jpeg' });
+                  const url = matchedFile.url || URL.createObjectURL(blob);
                   const type = matchedFile.name.toLowerCase().endsWith('mp4') ? 'video' : 'image';
-                  // Deduplication check logic
                   const existingMedia = post.media!.find(media => media.index === mIdx + 1);
                   if (existingMedia) {
                     if (type === 'video' && existingMedia.type === 'image') {
-                      // Replace image with video
                       post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, url, type, index: mIdx + 1 } : media);
                     }
                   } else {
                     post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1 });
                   }
                 }
-              });
+              }
 
               if (post.media!.length > 0) {
                 postsMap.set(postId, post);
               }
-            });
+            }
           } catch (e) {
             console.error("Error parsing JSON file:", jsonFile.name, e);
           }
@@ -972,20 +1092,17 @@ export default function App() {
       } 
       
       if (format !== 'json') {
-        // Handle Regex formats (Export or Instaloader)
-        let matchedCount = 0;
         const CHUNK_SIZE = 100;
-        
         for (let i = 0; i < files.length; i += CHUNK_SIZE) {
           const end = Math.min(i + CHUNK_SIZE, files.length);
-          
           for (let j = i; j < end; j++) {
             const file = files[j];
             const lowerName = file.name.toLowerCase();
             
-            // Check for potential profile pic (username.jpg)
             if (detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`) {
-              setProfilePic(URL.createObjectURL(file));
+              const blob = new Blob([await file.arrayBuffer()], { type: 'image/jpeg' });
+              const url = file.url || URL.createObjectURL(blob);
+              setProfilePic(url);
               continue;
             }
 
@@ -1010,10 +1127,7 @@ export default function App() {
               const match = file.name.match(instaloaderRegex);
               if (!match) continue;
               const [_, postIdMatch, indexStrMatch, storyMatch, extMatch] = match;
-              // Group 1 is the consistent timestamp part (e.g. 2022-03-31_14-56-28_UTC)
-              // This is the correct ID to group .jpg, .mp4, and .json.xz files.
               postId = postIdMatch;
-              
               date = postIdMatch.split('_')[0];
               index = indexStrMatch ? parseInt(indexStrMatch, 10) : 1;
               if (storyMatch) isStory = true;
@@ -1022,8 +1136,6 @@ export default function App() {
               continue;
             }
 
-            matchedCount++;
-            
             let post = postsMap.get(postId);
             if (!post) {
               post = {
@@ -1041,28 +1153,18 @@ export default function App() {
 
             const lowerExt = ext.toLowerCase();
             if (lowerExt === 'txt') {
-              const text = await file.text();
-              post.caption = text;
+              post.caption = await file.text();
             } else if (lowerExt === 'json' || lowerName.endsWith('.json.xz')) {
               try {
-                const data = lowerName.endsWith('.xz') 
-                  ? await parseXZFile(file)
-                  : JSON.parse(await file.text());
-                
+                const data = lowerName.endsWith('.xz') ? await parseXZFile(file) : JSON.parse(await file.text());
                 if (!data) continue;
-
                 const node = data.node || data;
                 const iphone = node.iphone_struct || {};
-                const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || 
-                                   node.caption?.text || 
-                                   iphone.caption?.text || "";
+                const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || node.caption?.text || iphone.caption?.text || "";
                 if (captionText) post.caption = captionText;
-                
                 if (checkIsStory(data) || checkIsStory(node) || checkIsStory(data.instaloader) || checkIsStory(iphone)) {
                   post.isStory = true;
                 }
-                
-                // Check if this JSON contains profile info
                 if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
                   const n = data.node;
                   const iph = n.iphone_struct || {};
@@ -1075,16 +1177,14 @@ export default function App() {
                 }
               } catch (e) {}
             } else if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].includes(lowerExt)) {
-              const url = URL.createObjectURL(file);
+              const blob = new Blob([await file.arrayBuffer()], { type: lowerExt === 'mp4' ? 'video/mp4' : 'image/jpeg' });
+              const url = file.url || URL.createObjectURL(blob);
               const type = lowerExt === 'mp4' ? 'video' : 'image';
-              
               const existingMedia = post.media!.find(m => m.index === index);
               if (existingMedia) {
-                // If we have an image and find a video for the same index, replace it
                 if (type === 'video' && existingMedia.type === 'image') {
                   post.media = post.media!.map(m => m.index === index ? { name: file.name, url, type, index } : m);
                 }
-                // If we have a video and find an image, do nothing (keep video)
               } else {
                 post.media!.push({ name: file.name, url, type, index });
               }
@@ -1108,7 +1208,6 @@ export default function App() {
       const posts = allItems.filter(p => !p.isStory).sort((a, b) => b.date.localeCompare(a.date));
       const stories = allItems.filter(p => p.isStory).sort((a, b) => a.date.localeCompare(b.date));
 
-      console.log(`Finalized ${posts.length} posts and ${stories.length} stories.`);
       setAllPosts(posts);
       setAllStories(stories);
       setVisiblePostsCount(90);
@@ -1117,6 +1216,32 @@ export default function App() {
     } finally {
       setIsScanning(false);
     }
+  };
+
+  const loadServerArchive = async (archive: ServerArchive) => {
+    setIsScanning(true);
+    setCurrentArchive(archive);
+    try {
+      const res = await fetch(`/api/archives/${archive.name}/files`);
+      const filePaths: string[] = await res.json();
+      
+      const archiveFiles = filePaths.map(p => {
+        const name = p.split(/[/\\]/).pop() || p;
+        return new RemoteArchiveFile(name, p, 0, `/archives/${archive.name}/${p}`);
+      });
+
+      await handleFiles(archiveFiles);
+    } catch (err) {
+      console.error('Failed to load server archive:', err);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleLocalFiles = (files: FileList | null) => {
+    if (!files) return;
+    const archiveFiles = Array.from(files).map(f => new LocalArchiveFile(f));
+    handleFiles(archiveFiles);
   };
 
   const triggerFileSelect = () => {
@@ -1138,13 +1263,22 @@ export default function App() {
         webkitdirectory=""
         directory=""
         multiple
-        onChange={(e) => handleFiles(e.target.files)}
+        onChange={(e) => handleLocalFiles(e.target.files)}
       />
 
       {/* Navigation */}
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 h-16 flex items-center px-4 md:px-8">
         <div className="max-w-5xl mx-auto w-full flex items-center justify-between">
-          <h1 className="text-lg md:text-xl font-bold tracking-tight italic font-serif">InstaArchive</h1>
+          <h1 
+            className="text-lg md:text-xl font-bold tracking-tight italic font-serif cursor-pointer"
+            onClick={() => {
+              setAllPosts([]);
+              setAllStories([]);
+              setCurrentArchive(null);
+            }}
+          >
+            InstaArchive
+          </h1>
           
           <div className="flex items-center gap-2 md:gap-8">
             {allPosts.length > 0 && activeTab === 'posts' && (
@@ -1194,41 +1328,64 @@ export default function App() {
             )}
 
             <button 
-              onClick={triggerFileSelect}
+              onClick={() => {
+                if (allPosts.length > 0) {
+                  setAllPosts([]);
+                  setAllStories([]);
+                  setCurrentArchive(null);
+                } else {
+                  triggerFileSelect();
+                }
+              }}
               className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
             >
               <FolderOpen size={18} />
-              <span className="hidden sm:inline">{allPosts.length > 0 ? 'Change Directory' : 'Load Archive'}</span>
-              <span className="sm:hidden">{allPosts.length > 0 ? 'Change' : 'Load'}</span>
+              <span className="hidden sm:inline">{allPosts.length > 0 ? 'Exit Archive' : 'Load Archive'}</span>
+              <span className="sm:hidden">{allPosts.length > 0 ? 'Exit' : 'Load'}</span>
             </button>
           </div>
         </div>
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 py-8 md:py-12">
-        {allPosts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
-              <Grid3X3 size={48} strokeWidth={1} />
+        {allPosts.length === 0 && !isScanning ? (
+          isServerMode ? (
+            <ArchiveDashboard 
+              archives={serverArchives} 
+              onSelect={loadServerArchive}
+              onLocalSelect={triggerFileSelect}
+              isScanning={isScanning}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
+                <Grid3X3 size={48} strokeWidth={1} />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-semibold">No Archive Loaded</h2>
+                <p className="text-gray-500 max-w-md">
+                  Select the directory containing your Instagram archive files to start browsing.
+                </p>
+              </div>
+              <button 
+                onClick={triggerFileSelect}
+                disabled={isScanning}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+              >
+                {isScanning ? (
+                  <>
+                    <Loader2 className="animate-spin" size={20} />
+                    <span className="animate-dots">Scanning</span>
+                  </>
+                ) : 'Select Archive Directory'}
+              </button>
             </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold">No Archive Loaded</h2>
-              <p className="text-gray-500 max-w-md">
-                Select the directory containing your Instagram archive files to start browsing.
-              </p>
-            </div>
-            <button 
-              onClick={triggerFileSelect}
-              disabled={isScanning}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
-            >
-              {isScanning ? (
-                <>
-                  <Loader2 className="animate-spin" size={20} />
-                  <span className="animate-dots">Scanning</span>
-                </>
-              ) : 'Select Archive Directory'}
-            </button>
+          )
+        ) : isScanning ? (
+          <div className="flex flex-col items-center justify-center py-40 space-y-4">
+            <Loader2 className="animate-spin text-blue-500" size={48} />
+            <div className="text-xl font-bold italic font-serif">Scanning Archive...</div>
+            <p className="text-gray-400 text-sm animate-pulse uppercase tracking-widest">Parsing media and metadata</p>
           </div>
         ) : (
           <div className="space-y-12">
@@ -1409,14 +1566,13 @@ export default function App() {
               ))}
             </div>
 
-            {/* Pagination Button */}
-            {allPosts.length > visiblePostsCount && (
-              <div className="flex justify-center pt-8">
+            {filteredPosts.length > visiblePostsCount && (
+              <div className="flex justify-center pt-12">
                 <button 
                   onClick={loadMore}
-                  className="bg-white border border-gray-200 hover:bg-gray-50 px-8 py-3 rounded-xl font-semibold shadow-sm transition-all active:scale-95"
+                  className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm"
                 >
-                  Load More Posts
+                  Load More
                 </button>
               </div>
             )}
@@ -1424,7 +1580,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Post Detail Modal */}
+      {/* Post Modal */}
       <AnimatePresence>
         {selectedPost && (
           <PostModal 
