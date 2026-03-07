@@ -655,6 +655,14 @@ export default function App() {
 
   // Update URL based on state
   useEffect(() => {
+    console.log('[Permalink] State changed:', { 
+      currentArchive: currentArchive?.name, 
+      username, 
+      posts: allPosts.length, 
+      activeTab, 
+      selectedPost: selectedPost?.id 
+    });
+
     const params = new URLSearchParams();
     if (currentArchive) params.set('a', currentArchive.name);
     else if (allPosts.length > 0 && username) params.set('a', username); // Handle local archives too
@@ -663,11 +671,10 @@ export default function App() {
     if (selectedPost) params.set('p', selectedPost.id);
 
     const newSearch = params.toString();
-    // Normalize currentSearch to ensure we don't have mismatch due to encoding
     const currentSearch = new URLSearchParams(window.location.search).toString();
     
     if (newSearch !== currentSearch) {
-      console.log(`[Permalink] Updating URL state: ?${newSearch}`);
+      console.log(`[Permalink] Updating URL to: ?${newSearch}`);
       const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
       window.history.replaceState(null, '', newUrl);
     }
@@ -683,9 +690,12 @@ export default function App() {
     const tab = params.get('t');
     const postId = params.get('p');
 
+    console.log('[Permalink] Initial read from URL:', { archiveName, tab, postId });
+
     if (archiveName) {
       const archive = serverArchives.find(a => a.name === archiveName);
       if (archive) {
+        console.log(`[Permalink] Auto-loading archive: ${archiveName}`);
         loadServerArchive(archive);
         if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
           setActiveTab(tab as any);
