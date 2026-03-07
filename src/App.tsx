@@ -629,39 +629,38 @@ export default function App() {
     refreshCachedArchives();
   }, [refreshCachedArchives]);
 
-  // Intercept back button and page exit when in an archive
+  // Intercept back button and page exit
   useEffect(() => {
-    const inArchive = allPosts.length > 0;
+    const hasData = allPosts.length > 0;
     
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (inArchive) {
+      // Always show warning if data is loaded and browser tries to UNLOAD (refresh/close/navigate away)
+      if (hasData) {
         const message = 'Are you sure you want to leave? Your current archive session will be cleared.';
         e.preventDefault();
-        e.returnValue = message; // Standard for most browsers
-        return message; // For some older browsers
+        e.returnValue = message;
+        return message;
       }
     };
 
     const handlePopState = (e: PopStateEvent) => {
-      if (inArchive) {
-        if (window.confirm('Exit current archive and return to explorer?')) {
-          // Exit the archive
-          setAllPosts([]);
-          setAllStories([]);
-          setCurrentArchive(null);
-          resetProfileState();
-        } else {
-          // Push the state back so the URL stays the same and we can intercept again
-          window.history.pushState(null, '');
-        }
+      if (allPosts.length > 0) {
+        // If we are IN an archive, the first "Back" just takes us to explorer
+        setAllPosts([]);
+        setAllStories([]);
+        setCurrentArchive(null);
+        resetProfileState();
+        // We don't pushState here, so the NEXT "Back" will actually try to leave the page
+        // and thus trigger the handleBeforeUnload warning.
       }
     };
 
-    if (inArchive) {
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      window.addEventListener('popstate', handlePopState);
-      // Add a history entry so the back button has something to pop
-      window.history.pushState(null, '');
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+
+    if (hasData) {
+      // Create a history entry so the "Back" button can be intercepted once
+      window.history.pushState({ inApp: true }, '');
     }
 
     return () => {
