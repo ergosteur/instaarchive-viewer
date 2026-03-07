@@ -1,0 +1,1363 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { 
+  Grid3X3, 
+  Play, 
+  Layers, 
+  ChevronLeft, 
+  ChevronRight, 
+  X, 
+  FolderOpen,
+  Heart,
+  MessageCircle,
+  Bookmark,
+  MoreHorizontal,
+  Loader2
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { format, parseISO } from 'date-fns';
+
+// --- Utilities ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+// --- Types ---
+interface MediaFile {
+  name: string;
+  url: string;
+  type: 'image' | 'video';
+  index: number;
+}
+
+interface Post {
+  id: string;
+  date: string;
+  username: string;
+  caption: string;
+  media: MediaFile[];
+  thumbnail: string;
+  isStory?: boolean;
+}
+
+// --- Components ---
+
+const StoryViewer = ({ 
+  stories, 
+  onClose 
+}: { 
+  stories: Post[]; 
+  onClose: () => void;
+}) => {
+  const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const story = stories[currentStoryIndex];
+
+  useEffect(() => {
+    setProgress(0);
+    const duration = 5000; // 5 seconds per story
+    const interval = 50;
+    const step = (interval / duration) * 100;
+
+    const timer = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) {
+          if (currentStoryIndex < stories.length - 1) {
+            setCurrentStoryIndex(prev => prev + 1);
+            return 0;
+          } else {
+            onClose();
+            return 100;
+          }
+        }
+        return prev + step;
+      });
+    }, interval);
+
+    return () => clearInterval(timer);
+  }, [currentStoryIndex, stories.length, onClose]);
+
+  const nextStory = () => {
+    if (currentStoryIndex < stories.length - 1) {
+      setCurrentStoryIndex(prev => prev + 1);
+    } else {
+      onClose();
+    }
+  };
+
+  const prevStory = () => {
+    if (currentStoryIndex > 0) {
+      setCurrentStoryIndex(prev => prev - 1);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
+      onClick={onClose}
+    >
+      <div 
+        className="relative w-full max-w-md aspect-[9/16] bg-gray-900 overflow-hidden md:rounded-xl shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Progress Bars */}
+        <div className="absolute top-4 left-4 right-4 z-50 flex gap-1">
+          {stories.map((_, i) => (
+            <div key={i} className="h-0.5 flex-1 bg-white/30 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-white transition-all duration-50"
+                style={{ 
+                  width: i < currentStoryIndex ? '100%' : (i === currentStoryIndex ? `${progress}%` : '0%') 
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Header */}
+        <div className="absolute top-8 left-4 right-4 z-50 flex items-center justify-between text-white">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-black uppercase">
+              {story.username[0]}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold">{story.username}</span>
+              <span className="text-[10px] opacity-70">{format(parseISO(story.date), 'MMM d')}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        {/* Media */}
+        <div className="w-full h-full flex items-center justify-center">
+          {story.media[0].type === 'video' ? (
+            <video 
+              src={story.media[0].url} 
+              className="w-full h-full object-cover"
+              autoPlay 
+              muted 
+              playsInline
+              onEnded={nextStory}
+            />
+          ) : (
+            <img 
+              src={story.media[0].url} 
+              alt="" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          )}
+        </div>
+
+        {/* Navigation Areas */}
+        <div className="absolute inset-0 flex">
+          <div className="w-1/3 h-full cursor-pointer" onClick={prevStory} />
+          <div className="w-2/3 h-full cursor-pointer" onClick={nextStory} />
+        </div>
+
+        {/* Caption */}
+        {story.caption && (
+          <div className="absolute bottom-10 left-4 right-4 z-50 text-white text-sm text-center drop-shadow-md">
+            {story.caption}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+// --- Cache for video thumbnails to prevent redundant processing ---
+const thumbnailCache = new Map<string, string>();
+
+const VideoThumbnail = ({ url, className }: { url: string; className?: string }) => {
+  const [thumbnail, setThumbnail] = useState<string | null>(thumbnailCache.get(url) || null);
+  const [isInView, setIsInView] = useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (thumbnail || !containerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' } // Start loading before it's actually in view
+    );
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [thumbnail]);
+
+  useEffect(() => {
+    if (thumbnail || !isInView) return;
+
+    const video = document.createElement('video');
+    video.src = `${url}#t=0.1`;
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    
+    const captureFrame = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx && video.videoWidth > 0) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          thumbnailCache.set(url, dataUrl);
+          setThumbnail(dataUrl);
+        }
+      } catch (err) {
+        console.error('Failed to capture video frame:', err);
+      } finally {
+        cleanup();
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      video.currentTime = 0.1;
+    };
+
+    const handleSeeked = () => {
+      captureFrame();
+    };
+
+    const handleError = () => {
+      cleanup();
+    };
+
+    const cleanup = () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('seeked', handleSeeked);
+      video.removeEventListener('error', handleError);
+      video.src = '';
+      video.load();
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('error', handleError);
+
+    const timeout = setTimeout(() => {
+      if (!thumbnailCache.has(url)) {
+        cleanup();
+      }
+    }, 5000);
+
+    return () => {
+      clearTimeout(timeout);
+      cleanup();
+    };
+  }, [url, thumbnail, isInView]);
+
+  if (!thumbnail) {
+    return (
+      <div 
+        ref={containerRef}
+        className={cn("w-full h-full bg-gray-100 flex items-center justify-center", className)}
+      >
+        <Play size={20} className="text-gray-300" fill="currentColor" />
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={thumbnail} 
+      alt="" 
+      className={cn("w-full h-full object-cover transition-transform duration-500 group-hover:scale-110", className)}
+      referrerPolicy="no-referrer"
+    />
+  );
+};
+
+const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; className?: string; isFullView?: boolean }) => {
+  const sizingClass = isFullView 
+    ? "w-full h-auto block" 
+    : "w-full h-full object-cover";
+
+  const mediaStyle = { transform: 'translateZ(0)' };
+
+  if (file.type === 'video') {
+    return (
+      <video 
+        src={file.url} 
+        className={cn(
+          "transition-all duration-300", 
+          sizingClass,
+          className
+        )}
+        style={mediaStyle}
+        controls
+        playsInline
+        autoPlay
+      />
+    );
+  }
+  return (
+    <img 
+      src={file.url} 
+      alt="" 
+      className={cn(
+        "transition-all duration-300", 
+        sizingClass,
+        className
+      )}
+      style={mediaStyle}
+      referrerPolicy="no-referrer"
+    />
+  );
+};
+
+const PostModal = ({ 
+  post, 
+  onClose, 
+  initialFullView = false,
+  onNextPost,
+  onPrevPost,
+  hasNextPost,
+  hasPrevPost
+}: { 
+  post: Post; 
+  onClose: () => void; 
+  initialFullView?: boolean;
+  onNextPost?: () => void;
+  onPrevPost?: () => void;
+  hasNextPost?: boolean;
+  hasPrevPost?: boolean;
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isFullView, setIsFullView] = useState(initialFullView);
+  const [direction, setDirection] = useState(0);
+
+  // Reset currentIndex when post changes
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [post.id]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        if (onNextPost) {
+          e.preventDefault();
+          onNextPost();
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (onPrevPost) {
+          e.preventDefault();
+          onPrevPost();
+        }
+      } else if (e.key === '.') {
+        if (currentIndex < post.media.length - 1) {
+          e.preventDefault();
+          paginate(1);
+        }
+      } else if (e.key === ',') {
+        if (currentIndex > 0) {
+          e.preventDefault();
+          paginate(-1);
+        }
+      } else if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onNextPost, onPrevPost, currentIndex, post.media.length, onClose]);
+
+  const paginate = (newDirection: number) => {
+    const nextIndex = currentIndex + newDirection;
+    if (nextIndex >= 0 && nextIndex < post.media.length) {
+      setDirection(newDirection);
+      setCurrentIndex(nextIndex);
+    }
+  };
+
+  const variants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? '100%' : '-100%',
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+    },
+    exit: (direction: number) => ({
+      zIndex: 0,
+      x: direction < 0 ? '100%' : '-100%',
+    })
+  };
+
+  const swipeConfidenceThreshold = 15000; // Increased from 10000 for more intentional swipes
+  const interPostSwipeThreshold = 40000; // Higher threshold for switching between different posts
+  const swipePower = (offset: number, velocity: number) => {
+    return Math.abs(offset) * velocity;
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-[#0c1014]/95 md:bg-[#0c1014]/70 p-0 md:p-10 overflow-y-auto"
+      style={{ colorScheme: 'dark' }}
+      onClick={onClose}
+    >
+      <div className="min-h-full w-full flex items-center justify-center md:py-0">
+        <button 
+          onClick={onClose}
+          className="fixed top-4 right-4 text-white hover:text-gray-300 z-50 p-2 md:p-3 bg-black/20 rounded-full backdrop-blur-sm"
+        >
+          <X size={24} className="md:w-8 md:h-8" />
+        </button>
+
+        {/* Post Navigation Buttons - Hidden on Mobile */}
+        {hasPrevPost && onPrevPost && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onPrevPost(); }}
+            className="hidden md:block fixed left-4 md:left-10 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-50 transition-transform hover:scale-110 active:scale-90"
+          >
+            <ChevronLeft size={48} strokeWidth={1.5} />
+          </button>
+        )}
+
+        {hasNextPost && onNextPost && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onNextPost(); }}
+            className="hidden md:block fixed right-4 md:right-10 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-50 transition-transform hover:scale-110 active:scale-90"
+          >
+            <ChevronRight size={48} strokeWidth={1.5} />
+          </button>
+        )}
+
+        <motion.div 
+          drag="y"
+          dragDirectionLock
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0.15}
+          onDragEnd={(e, { offset, velocity }) => {
+            // Higher threshold for vertical dismissal to prevent accidental triggers during scroll
+            if (offset.y > 200 || velocity.y > 800) {
+              onClose();
+            }
+          }}
+          className="bg-black flex flex-col md:flex-row w-full max-w-6xl h-auto md:rounded-sm overflow-hidden shadow-2xl relative"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Media Section */}
+          <div className={cn(
+            "relative bg-black flex items-center justify-center group overflow-hidden",
+            isFullView ? "w-full h-auto" : "w-full aspect-square"
+          )}>
+            <div className={cn(
+              "w-full grid grid-cols-1 grid-rows-1",
+              isFullView ? "" : "absolute inset-0 h-full"
+            )}>
+              <AnimatePresence initial={false} custom={direction}>
+                <motion.div
+                  key={`${post.id}-${currentIndex}`}
+                  custom={direction}
+                  variants={variants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{
+                    x: { type: "spring", stiffness: 300, damping: 30 }
+                  }}
+                  drag="x"
+                  dragDirectionLock
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.5}
+                  onDragEnd={(e, { offset, velocity }) => {
+                    const swipe = swipePower(offset.x, velocity.x);
+
+                    if (swipe < -swipeConfidenceThreshold) {
+                      if (currentIndex < post.media.length - 1) {
+                        paginate(1);
+                      } else if (hasNextPost && onNextPost && swipe < -interPostSwipeThreshold) {
+                        onNextPost();
+                      }
+                    } else if (swipe > swipeConfidenceThreshold) {
+                      if (currentIndex > 0) {
+                        paginate(-1);
+                      } else if (hasPrevPost && onPrevPost && swipe > interPostSwipeThreshold) {
+                        onPrevPost();
+                      }
+                    }
+                  }}
+                  className={cn(
+                    "col-start-1 row-start-1 w-full flex items-center justify-center cursor-grab active:cursor-grabbing",
+                    isFullView ? "relative" : "h-full"
+                  )}
+                >
+                  <MediaRenderer file={post.media[currentIndex]} isFullView={isFullView} />
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            
+            {/* Full/Square Toggle Overlay */}
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFullView(!isFullView);
+              }}
+              className="absolute top-4 left-4 md:top-4 md:right-4 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full backdrop-blur-md transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider z-30 md:opacity-0 md:group-hover:opacity-100"
+              title={isFullView ? "Crop to Square" : "View Original Aspect Ratio"}
+            >
+              {isFullView ? <Grid3X3 size={16} /> : <Layers size={16} />}
+              <span className="hidden sm:inline">{isFullView ? "Square" : "Full"}</span>
+            </button>
+            
+            {post.media.length > 1 && (
+              <>
+                {currentIndex > 0 && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); paginate(-1); }}
+                    className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 z-30"
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                )}
+                {currentIndex < post.media.length - 1 && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); paginate(1); }}
+                    className="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 z-30"
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                )}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-30">
+                  {post.media.map((_, i) => (
+                    <div 
+                      key={i}
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full transition-all",
+                        i === currentIndex ? "bg-blue-500 scale-125" : "bg-white/40 shadow-sm"
+                      )}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Info Section */}
+          <div className="w-full md:w-96 bg-white flex flex-col border-l border-gray-200 overflow-hidden shrink-0">
+            <div className="p-3 md:p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-purple-600 p-0.5">
+                  <div className="w-full h-full rounded-full bg-white p-0.5">
+                    <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                      <span className="text-[10px] font-bold uppercase">{post.username[0]}</span>
+                    </div>
+                  </div>
+                </div>
+                <span className="font-semibold text-sm">{post.username}</span>
+              </div>
+              <MoreHorizontal size={20} className="text-gray-500" />
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 min-h-0 md:max-h-[60vh]">
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase">
+                  {post.username[0]}
+                </div>
+                <div className="text-sm">
+                  <span className="font-semibold mr-2">{post.username}</span>
+                  <span className="whitespace-pre-wrap">{post.caption}</span>
+                  <div className="mt-2 text-xs text-gray-500 uppercase tracking-tight">
+                    {format(parseISO(post.date), 'MMMM d, yyyy')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 md:p-4 border-t border-gray-100 space-y-3 shrink-0 bg-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Heart size={24} className="hover:text-gray-500 cursor-pointer" />
+                  <MessageCircle size={24} className="hover:text-gray-500 cursor-pointer" />
+                  <Play size={24} className="hover:text-gray-500 cursor-pointer" />
+                </div>
+                <Bookmark size={24} className="hover:text-gray-500 cursor-pointer" />
+              </div>
+              <div className="text-sm flex items-center gap-2">
+                <span className="font-semibold">Archived Post</span>
+                <span className="text-gray-400 font-normal text-xs">{post.id}</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+};
+
+export default function App() {
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [allStories, setAllStories] = useState<Post[]>([]);
+  const [showStoryViewer, setShowStoryViewer] = useState(false);
+  const [visiblePostsCount, setVisiblePostsCount] = useState(90);
+  const [isScanning, setIsScanning] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [username, setUsername] = useState<string>('');
+  const [fullName, setFullName] = useState<string>('');
+  const [bio, setBio] = useState<string>('');
+  const [followerCount, setFollowerCount] = useState<number>(0);
+  const [followingCount, setFollowingCount] = useState<number>(0);
+  const [externalUrl, setExternalUrl] = useState<string>('');
+  const [profilePic, setProfilePic] = useState<string | null>(null);
+  const [gridAspectRatio, setGridAspectRatio] = useState<'1:1' | '3:4'>('1:1');
+  const [gridOffset, setGridOffset] = useState(0);
+  const [activeTab, setActiveTab] = useState<'posts' | 'reels' | 'saved'>('posts');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const profilePicInputRef = React.useRef<HTMLInputElement>(null);
+
+  const filteredPosts = useMemo(() => {
+    if (activeTab === 'reels') {
+      return allPosts.filter(p => p.media.length === 1 && p.media[0].type === 'video');
+    }
+    if (activeTab === 'posts') {
+      return allPosts.filter(p => !(p.media.length === 1 && p.media[0].type === 'video'));
+    }
+    return []; // Saved tab is empty for now
+  }, [allPosts, activeTab]);
+
+  const handleTabChange = (tab: 'posts' | 'reels' | 'saved') => {
+    setActiveTab(tab);
+    setVisiblePostsCount(90);
+  };
+
+  const visiblePosts = useMemo(() => {
+    return filteredPosts.slice(0, visiblePostsCount);
+  }, [filteredPosts, visiblePostsCount]);
+
+  const postIndex = useMemo(() => {
+    if (!selectedPost) return -1;
+    return filteredPosts.findIndex(p => p.id === selectedPost.id);
+  }, [selectedPost, filteredPosts]);
+
+  const onNextPost = useCallback(() => {
+    if (postIndex < filteredPosts.length - 1) {
+      setSelectedPost(filteredPosts[postIndex + 1]);
+    }
+  }, [postIndex, filteredPosts]);
+
+  const onPrevPost = useCallback(() => {
+    if (postIndex > 0) {
+      setSelectedPost(filteredPosts[postIndex - 1]);
+    }
+  }, [postIndex, filteredPosts]);
+
+  const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setProfilePic(url);
+    }
+  };
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files) return;
+    setIsScanning(true);
+    setProfilePic(null);
+    setGridOffset(0);
+    console.log(`Starting scan of ${files.length} files...`);
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    try {
+      const postsMap = new Map<string, Partial<Post>>();
+      const mediaFilesMap = new Map<string, File>();
+      
+      // Format 1: Instagram Export (e.g., 2021-01-01_username - ID - 1.jpg)
+      const exportRegex = /^(\d{4}-\d{2}-\d{2})_(.+?) - ([a-zA-Z0-9_-]+)(?: - (\d+))?(?: - (story))?\.(.+)$/;
+      
+      // Format 2: Instaloader (e.g., 2017-03-31_12-42-56_UTC.jpg or 2020-12-05_22-11-27_UTC_1.jpg)
+      const instaloaderRegex = /^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_UTC)(?:_(\d+))?(?:_(story))?\.(.+)$/;
+
+      const checkIsStory = (obj: any): boolean => {
+        if (!obj) return false;
+        const typeName = obj.__typename || obj.typename || "";
+        const nodeType = obj.node_type || "";
+        const productType = obj.product_type || "";
+        return (
+          obj.is_story === true ||
+          typeName.includes('Story') ||
+          obj.audience === "MediaAudience.DEFAULT" ||
+          nodeType === "StoryItem" ||
+          productType === "story"
+        );
+      };
+
+      let detectedUsername = '';
+      let format: 'export' | 'instaloader' | 'json' | 'unknown' = 'unknown';
+      let jsonFiles: File[] = [];
+
+      // First pass: detect format and collect files
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const lowerName = file.name.toLowerCase();
+
+        // Check for official JSON format or profile JSON
+        if (lowerName.endsWith('.json')) {
+          jsonFiles.push(file);
+          if (lowerName.includes('posts_1') || lowerName.includes('reels_1') || lowerName.includes('stories_1')) {
+            format = 'json';
+          } else if (format === 'unknown' && (lowerName.includes('story') || lowerName.includes('post'))) {
+            // Likely Instaloader or other JSON-per-post format
+            format = 'json';
+          }
+          continue;
+        }
+
+        // Check for profile pic in Instaloader format
+        if (lowerName.includes('_profile_pic.jpg')) {
+          setProfilePic(URL.createObjectURL(file));
+          if (file.webkitRelativePath) {
+            const parts = file.webkitRelativePath.split('/');
+            if (parts.length > 1) {
+              detectedUsername = parts[0];
+              setUsername(detectedUsername);
+            }
+          }
+          if (format === 'unknown') format = 'instaloader';
+          continue;
+        }
+
+        const exportMatch = file.name.match(exportRegex);
+        if (exportMatch) {
+          detectedUsername = exportMatch[2];
+          setUsername(detectedUsername);
+          format = 'export';
+        }
+
+        const loaderMatch = file.name.match(instaloaderRegex);
+        if (loaderMatch && format === 'unknown') {
+          format = 'instaloader';
+          if (!detectedUsername && file.webkitRelativePath) {
+            const parts = file.webkitRelativePath.split('/');
+            if (parts.length > 1) {
+              detectedUsername = parts[0];
+              setUsername(detectedUsername);
+            }
+          }
+        }
+
+        // Store all media files for JSON format lookup
+        if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].some(ext => lowerName.endsWith(ext))) {
+          // Store by relative path or just name
+          const key = file.webkitRelativePath || file.name;
+          mediaFilesMap.set(key, file);
+        }
+      }
+
+      console.log(`Detected format: ${format}, Username: ${detectedUsername}`);
+
+      if (format === 'json') {
+        // Handle JSON format (Official Instagram Export)
+        for (const jsonFile of jsonFiles) {
+          try {
+            const content = await jsonFile.text();
+            const data = JSON.parse(content);
+            
+            // Check if it's a profile JSON
+            if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
+              const node = data.node;
+              const iphone = node.iphone_struct || {};
+              
+              setUsername(node.username || '');
+              setFullName(node.full_name || '');
+              setBio(node.biography || iphone.biography || '');
+              setExternalUrl(node.external_url || '');
+              setFollowerCount(node.edge_followed_by?.count || iphone.follower_count || 0);
+              setFollowingCount(node.edge_follow?.count || iphone.following_count || 0);
+              continue;
+            }
+
+            // Official Instagram JSON structure is usually an array of objects
+            // Instaloader JSON is usually a single object
+            const items = Array.isArray(data) ? data : (data.media || [data]);
+            const isStoriesFile = jsonFile.name.toLowerCase().includes('stories');
+            
+            items.forEach((item: any, idx: number) => {
+              const mediaList = item.media || [item];
+              const postId = item.node?.id || item.id || item.title || `post_${idx}_${Date.now()}`;
+              const date = item.creation_timestamp 
+                ? new Date(item.creation_timestamp * 1000).toISOString().split('T')[0]
+                : item.node?.taken_at_timestamp
+                  ? new Date(item.node.taken_at_timestamp * 1000).toISOString().split('T')[0]
+                  : new Date().toISOString().split('T')[0];
+
+              const isStory = isStoriesFile || 
+                            checkIsStory(item) || 
+                            checkIsStory(item.node) ||
+                            checkIsStory(data.instaloader) ||
+                            (item.media && Array.isArray(item.media) && item.media.some((m: any) => checkIsStory(m)));
+
+              const post: Partial<Post> = {
+                id: postId,
+                date,
+                username: detectedUsername || 'archived_user',
+                caption: item.title || item.node?.edge_media_to_caption?.edges?.[0]?.node?.text || item.node?.caption?.text || '',
+                media: [],
+                isStory,
+              };
+
+              mediaList.forEach((m: any, mIdx: number) => {
+                const uri = m.uri;
+                let matchedFile: File | undefined;
+                
+                // 1. Try URI matching (Official Export)
+                if (uri) {
+                  for (const [path, file] of mediaFilesMap.entries()) {
+                    if (path.endsWith(uri) || uri.endsWith(path)) {
+                      matchedFile = file;
+                      break;
+                    }
+                  }
+                }
+
+                // 2. Try ID matching (Instaloader/Generic)
+                if (!matchedFile) {
+                  const id = item.node?.id || item.id;
+                  if (id) {
+                    for (const [path, file] of mediaFilesMap.entries()) {
+                      if (file.name.includes(id)) {
+                        matchedFile = file;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                // 3. Try JSON filename matching (Instaloader)
+                if (!matchedFile) {
+                  const jsonBase = jsonFile.name.substring(0, jsonFile.name.lastIndexOf('.'));
+                  for (const ext of ['mp4', 'jpg', 'jpeg', 'png', 'webp']) {
+                    const possibleName = `${jsonBase}.${ext}`;
+                    for (const [path, file] of mediaFilesMap.entries()) {
+                      if (file.name.toLowerCase() === possibleName.toLowerCase()) {
+                        matchedFile = file;
+                        break;
+                      }
+                    }
+                    if (matchedFile) break;
+                  }
+                }
+
+                if (matchedFile) {
+                  const url = URL.createObjectURL(matchedFile);
+                  const type = matchedFile.name.toLowerCase().endsWith('mp4') ? 'video' : 'image';
+                  post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1 });
+                }
+              });
+
+              if (post.media!.length > 0) {
+                postsMap.set(postId, post);
+              }
+            });
+          } catch (e) {
+            console.error("Error parsing JSON file:", jsonFile.name, e);
+          }
+        }
+      } else {
+        // Handle Regex formats (Export or Instaloader)
+        let matchedCount = 0;
+        const CHUNK_SIZE = 100;
+        
+        for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+          const end = Math.min(i + CHUNK_SIZE, files.length);
+          
+          for (let j = i; j < end; j++) {
+            const file = files[j];
+            const lowerName = file.name.toLowerCase();
+            
+            if (format === 'export' && detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`) {
+              setProfilePic(URL.createObjectURL(file));
+              continue;
+            }
+
+            let postId = '';
+            let date = '';
+            let user = detectedUsername || 'archived_user';
+            let index = 1;
+            let ext = '';
+            let isStory = lowerName.includes('story') || file.webkitRelativePath.toLowerCase().includes('stories');
+
+            if (format === 'export') {
+              const match = file.name.match(exportRegex);
+              if (!match) continue;
+              const [_, dateMatch, userMatch, postIdMatch, indexStrMatch, storyMatch, extMatch] = match;
+              date = dateMatch;
+              user = userMatch;
+              postId = postIdMatch;
+              index = indexStrMatch ? parseInt(indexStrMatch, 10) : 1;
+              if (storyMatch) isStory = true;
+              ext = extMatch;
+            } else if (format === 'instaloader') {
+              const match = file.name.match(instaloaderRegex);
+              if (!match) continue;
+              const [_, postIdMatch, indexStrMatch, storyMatch, extMatch] = match;
+              postId = postIdMatch;
+              date = postId.split('_')[0];
+              index = indexStrMatch ? parseInt(indexStrMatch, 10) : 1;
+              if (storyMatch) isStory = true;
+              ext = extMatch;
+            } else {
+              continue;
+            }
+
+            matchedCount++;
+            
+            let post = postsMap.get(postId);
+            if (!post) {
+              post = {
+                id: postId,
+                date,
+                username: user,
+                caption: '',
+                media: [],
+                isStory,
+              };
+              postsMap.set(postId, post);
+            } else if (isStory) {
+              // Update isStory flag if any file associated with this post indicates it's a story
+              post.isStory = true;
+            }
+
+            const lowerExt = ext.toLowerCase();
+            if (lowerExt === 'txt') {
+              const text = await file.text();
+              post.caption = text;
+            } else if (lowerExt === 'json') {
+              try {
+                const content = await file.text();
+                const data = JSON.parse(content);
+                
+                // Extract caption
+                const node = data.node || data;
+                const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || 
+                                   node.caption?.text || 
+                                   node.iphone_struct?.caption?.text || "";
+                if (captionText) post.caption = captionText;
+                
+                // Update isStory if JSON confirms it
+                if (checkIsStory(data) || checkIsStory(data.node) || checkIsStory(data.instaloader)) {
+                  post.isStory = true;
+                }
+                
+                // Profile info check in case it's a profile JSON
+                if (data.node && (data.instaloader?.node_type === 'Profile' || data.node.__typename === 'User')) {
+                  const n = data.node;
+                  const iphone = n.iphone_struct || {};
+                  setUsername(n.username || '');
+                  setFullName(n.full_name || '');
+                  setBio(n.biography || iphone.biography || '');
+                  setExternalUrl(n.external_url || '');
+                  setFollowerCount(n.edge_followed_by?.count || iphone.follower_count || 0);
+                  setFollowingCount(n.edge_follow?.count || iphone.following_count || 0);
+                }
+              } catch (e) {}
+            } else if (['jpg', 'jpeg', 'png', 'webp', 'mp4'].includes(lowerExt)) {
+              const url = URL.createObjectURL(file);
+              const type = lowerExt === 'mp4' ? 'video' : 'image';
+              post.media!.push({ name: file.name, url, type, index });
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+
+      const allItems = Array.from(postsMap.values())
+        .filter(p => p.media && p.media.length > 0)
+        .map(p => {
+          const sortedMedia = p.media!.sort((a, b) => a.index - b.index);
+          return {
+            ...p,
+            media: sortedMedia,
+            thumbnail: sortedMedia[0].url,
+          } as Post;
+        });
+
+      const posts = allItems.filter(p => !p.isStory).sort((a, b) => b.date.localeCompare(a.date));
+      const stories = allItems.filter(p => p.isStory).sort((a, b) => b.date.localeCompare(a.date));
+
+      console.log(`Finalized ${posts.length} posts and ${stories.length} stories.`);
+      setAllPosts(posts);
+      setAllStories(stories);
+      setVisiblePostsCount(90);
+    } catch (err) {
+      console.error('Error processing files:', err);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  const loadMore = () => {
+    setVisiblePostsCount(prev => prev + 90);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+      {/* Hidden Input for Directory Selection */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        // @ts-ignore - webkitdirectory is non-standard but widely supported
+        webkitdirectory=""
+        directory=""
+        multiple
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+
+      {/* Navigation */}
+      <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 h-16 flex items-center px-4 md:px-8">
+        <div className="max-w-5xl mx-auto w-full flex items-center justify-between">
+          <h1 className="text-lg md:text-xl font-bold tracking-tight italic font-serif">InstaArchive</h1>
+          
+          <div className="flex items-center gap-2 md:gap-8">
+            {allPosts.length > 0 && activeTab === 'posts' && (
+              <div className="flex items-center gap-2 md:gap-6">
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <span className="hidden sm:inline text-[10px] font-bold uppercase text-gray-400 tracking-wider">Bump:</span>
+                  <div className="flex bg-gray-100 p-0.5 md:p-1 rounded-lg">
+                    {[0, 1, 2].map((offset) => (
+                      <button 
+                        key={offset}
+                        onClick={() => setGridOffset(offset)}
+                        className={cn(
+                          "px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all",
+                          gridOffset === offset ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+                        )}
+                      >
+                        {offset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <span className="hidden sm:inline text-[10px] font-bold uppercase text-gray-400 tracking-wider">Grid:</span>
+                  <div className="flex bg-gray-100 p-0.5 md:p-1 rounded-lg">
+                    <button 
+                      onClick={() => setGridAspectRatio('1:1')}
+                      className={cn(
+                        "px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all",
+                        gridAspectRatio === '1:1' ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      1:1
+                    </button>
+                    <button 
+                      onClick={() => setGridAspectRatio('3:4')}
+                      className={cn(
+                        "px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all",
+                        gridAspectRatio === '3:4' ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700"
+                      )}
+                    >
+                      3:4
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button 
+              onClick={triggerFileSelect}
+              className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            >
+              <FolderOpen size={18} />
+              <span className="hidden sm:inline">{allPosts.length > 0 ? 'Change Directory' : 'Load Archive'}</span>
+              <span className="sm:hidden">{allPosts.length > 0 ? 'Change' : 'Load'}</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-5xl mx-auto px-4 py-8 md:py-12">
+        {allPosts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
+              <Grid3X3 size={48} strokeWidth={1} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-semibold">No Archive Loaded</h2>
+              <p className="text-gray-500 max-w-md">
+                Select the directory containing your Instagram archive files to start browsing.
+              </p>
+            </div>
+            <button 
+              onClick={triggerFileSelect}
+              disabled={isScanning}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+            >
+              {isScanning ? (
+                <>
+                  <Loader2 className="animate-spin" size={20} />
+                  <span className="animate-dots">Scanning</span>
+                </>
+              ) : 'Select Archive Directory'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-12">
+            {/* Profile Header */}
+            <header className="flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-20 px-4">
+              <div 
+                className={cn(
+                  "w-24 h-24 md:w-36 md:h-36 rounded-full p-1 cursor-pointer transition-transform active:scale-95",
+                  allStories.length > 0 
+                    ? "bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600" 
+                    : "bg-gray-200"
+                )}
+                onClick={() => allStories.length > 0 && setShowStoryViewer(true)}
+              >
+                <div className="w-full h-full rounded-full bg-white p-1">
+                  <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                    {profilePic ? (
+                      <img 
+                        src={profilePic} 
+                        alt={username} 
+                        className="w-full h-full object-cover"
+                        onError={() => setProfilePic(null)}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="text-3xl font-bold text-gray-400 uppercase">
+                        {username[0]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex-1 space-y-6 text-center md:text-left">
+                <div className="flex flex-col md:flex-row items-center gap-4">
+                  <h2 className="text-2xl font-light tracking-wide">{username}</h2>
+                  <div className="flex gap-2">
+                    <input 
+                      type="file" 
+                      ref={profilePicInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handleProfilePicChange}
+                    />
+                    <button 
+                      onClick={() => profilePicInputRef.current?.click()}
+                      className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      Set Profile Picture
+                    </button>
+                    <button className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">
+                      View Archive
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-center md:justify-start gap-10">
+                  <div><span className="font-semibold">{allPosts.length}</span> posts</div>
+                  <div><span className="font-semibold">{followerCount.toLocaleString()}</span> followers</div>
+                  <div><span className="font-semibold">{followingCount.toLocaleString()}</span> following</div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="font-semibold">{fullName || `@${username}`}</div>
+                  <div className="text-gray-600 whitespace-pre-wrap max-w-sm mx-auto md:mx-0">
+                    {bio || 'Archived profile viewer for local files.'}
+                  </div>
+                  {externalUrl && (
+                    <a 
+                      href={externalUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-900 font-semibold text-sm block hover:underline truncate max-w-[250px]"
+                    >
+                      {externalUrl.replace(/^https?:\/\/(www\.)?/, '')}
+                    </a>
+                  )}
+                </div>
+              </div>
+            </header>
+
+            {/* Tabs */}
+            <div className="border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex justify-center gap-12 flex-1">
+                <button 
+                  onClick={() => handleTabChange('posts')}
+                  className={cn(
+                    "flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all",
+                    activeTab === 'posts' ? "border-black text-black" : "border-transparent text-gray-400"
+                  )}
+                >
+                  <Grid3X3 size={14} />
+                  Posts
+                </button>
+                <button 
+                  onClick={() => handleTabChange('reels')}
+                  className={cn(
+                    "flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all",
+                    activeTab === 'reels' ? "border-black text-black" : "border-transparent text-gray-400"
+                  )}
+                >
+                  <Play size={14} />
+                  Reels
+                </button>
+                <button 
+                  onClick={() => handleTabChange('saved')}
+                  className={cn(
+                    "flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all",
+                    activeTab === 'saved' ? "border-black text-black" : "border-transparent text-gray-400"
+                  )}
+                >
+                  <Bookmark size={14} />
+                  Saved
+                </button>
+              </div>
+            </div>
+
+            {/* Grid */}
+            <div className="grid grid-cols-3 gap-[2px] md:gap-[2px]">
+              {activeTab === 'posts' && Array.from({ length: gridOffset }).map((_, i) => (
+                <div 
+                  key={`blank-${i}`} 
+                  className={cn(
+                    "bg-gray-100/50 border border-dashed border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase tracking-tighter",
+                    gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"
+                  )}
+                >
+                  Blank
+                </div>
+              ))}
+              {visiblePosts.map((post) => (
+                <motion.div 
+                  key={post.id}
+                  layoutId={post.id}
+                  onClick={() => setSelectedPost(post)}
+                  className={cn(
+                    "relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300",
+                    activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]")
+                  )}
+                >
+                  {post.media[0].type === 'video' ? (
+                    <VideoThumbnail url={post.media[0].url} />
+                  ) : (
+                    <img 
+                      src={post.thumbnail} 
+                      alt="" 
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
+                  
+                  {/* Icons */}
+                  <div className="absolute top-2 right-2 flex gap-1.5 z-10">
+                    {post.media.length > 1 && (
+                      <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm">
+                        <Layers size={16} />
+                      </div>
+                    )}
+                    {post.media.some(m => m.type === 'video') && (
+                      <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm">
+                        <Play size={16} fill="white" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hover Overlay */}
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold z-20">
+                    <div className="flex items-center gap-2">
+                      <Heart fill="white" size={20} />
+                      <span>-</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MessageCircle fill="white" size={20} />
+                      <span>-</span>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Pagination Button */}
+            {allPosts.length > visiblePostsCount && (
+              <div className="flex justify-center pt-8">
+                <button 
+                  onClick={loadMore}
+                  className="bg-white border border-gray-200 hover:bg-gray-50 px-8 py-3 rounded-xl font-semibold shadow-sm transition-all active:scale-95"
+                >
+                  Load More Posts
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Post Detail Modal */}
+      <AnimatePresence>
+        {selectedPost && (
+          <PostModal 
+            post={selectedPost} 
+            onClose={() => setSelectedPost(null)} 
+            initialFullView={activeTab === 'reels' || gridAspectRatio === '3:4'}
+            onNextPost={onNextPost}
+            onPrevPost={onPrevPost}
+            hasNextPost={postIndex < filteredPosts.length - 1}
+            hasPrevPost={postIndex > 0}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Story Viewer */}
+      <AnimatePresence>
+        {showStoryViewer && allStories.length > 0 && (
+          <StoryViewer 
+            stories={allStories} 
+            onClose={() => setShowStoryViewer(false)} 
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Footer */}
+      <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-xs text-gray-400 space-y-4">
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight">
+          <span>Meta</span>
+          <span>About</span>
+          <span>Blog</span>
+          <span>Jobs</span>
+          <span>Help</span>
+          <span>API</span>
+          <span>Privacy</span>
+          <span>Terms</span>
+          <span>Locations</span>
+          <span>Instagram Lite</span>
+          <span>Threads</span>
+          <span>Contact Uploading & Non-Users</span>
+          <span>Meta Verified</span>
+        </div>
+        <div>© 2026 InstaArchive from Google AI Studio</div>
+      </footer>
+    </div>
+  );
+}
