@@ -1,0 +1,5 @@
+{
+  "name": "InstaArchive",
+  "description": "A high-performance PWA to browse and explore your archived Instagram data with a native-feeling interface.",
+  "requestFramePermissions": []
+}
