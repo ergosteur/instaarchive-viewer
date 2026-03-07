@@ -451,7 +451,9 @@ const VideoThumbnail = ({ url, className }: { url: string; className?: string })
     const cleanup = () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('seeked', handleSeeked);
-      video.src = ''; video.load();
+      // Using removeAttribute is safer than src = '' to stop loading without warnings
+      video.removeAttribute('src'); 
+      video.load();
     };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -484,6 +486,9 @@ const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; class
   const [isMuted, setIsMuted] = useState(false);
   const sizingClass = isFullView ? "w-full h-auto block" : "w-full h-full object-cover";
   const mediaStyle = { transform: 'translateZ(0)' };
+
+  // Guard against empty URLs
+  if (!file.url) return <div className={cn("bg-gray-100 flex items-center justify-center", sizingClass)}><Play size={24} className="text-gray-300" /></div>;
 
   if (file.type === 'video') {
     return (
