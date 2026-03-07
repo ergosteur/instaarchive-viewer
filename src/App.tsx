@@ -635,20 +635,25 @@ export default function App() {
     
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (inArchive) {
+        const message = 'Are you sure you want to leave? Your current archive session will be cleared.';
         e.preventDefault();
-        e.returnValue = ''; // Trigger browser confirmation dialog
+        e.returnValue = message; // Standard for most browsers
+        return message; // For some older browsers
       }
     };
 
     const handlePopState = (e: PopStateEvent) => {
       if (inArchive) {
-        // Instead of going back, just exit the archive
-        setAllPosts([]);
-        setAllStories([]);
-        setCurrentArchive(null);
-        resetProfileState();
-        // Stay on the same page
-        window.history.pushState(null, '');
+        if (window.confirm('Exit current archive and return to explorer?')) {
+          // Exit the archive
+          setAllPosts([]);
+          setAllStories([]);
+          setCurrentArchive(null);
+          resetProfileState();
+        } else {
+          // Push the state back so the URL stays the same and we can intercept again
+          window.history.pushState(null, '');
+        }
       }
     };
 
