@@ -16,7 +16,9 @@ import {
   MessageCircle,
   Bookmark,
   MoreHorizontal,
-  Loader2
+  Loader2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
@@ -52,38 +54,56 @@ interface Post {
 
 const StoryViewer = ({ 
   stories, 
-  onClose 
+  onClose,
+  profilePic
 }: { 
   stories: Post[]; 
   onClose: () => void;
+  profilePic: string | null;
 }) => {
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
   const story = stories[currentStoryIndex];
 
   useEffect(() => {
     setProgress(0);
-    const duration = 5000; // 5 seconds per story
+    let duration = 5000; // Default 5s for images
     const interval = 50;
-    const step = (interval / duration) * 100;
+    
+    const updateProgress = () => {
+      if (story.media[0].type === 'video' && videoRef.current) {
+        const currentTime = videoRef.current.currentTime;
+        const totalTime = videoRef.current.duration;
+        if (totalTime) {
+          setProgress((currentTime / totalTime) * 100);
+        }
+      } else {
+        setProgress(prev => {
+          const step = (interval / duration) * 100;
+          if (prev >= 100) return 100;
+          return prev + step;
+        });
+      }
+    };
 
     const timer = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          if (currentStoryIndex < stories.length - 1) {
-            setCurrentStoryIndex(prev => prev + 1);
-            return 0;
-          } else {
-            onClose();
-            return 100;
-          }
-        }
-        return prev + step;
-      });
+      updateProgress();
     }, interval);
 
     return () => clearInterval(timer);
-  }, [currentStoryIndex, stories.length, onClose]);
+  }, [currentStoryIndex, story.media]);
+
+  useEffect(() => {
+    if (progress >= 100) {
+      if (currentStoryIndex < stories.length - 1) {
+        setCurrentStoryIndex(prev => prev + 1);
+      } else {
+        onClose();
+      }
+    }
+  }, [progress, currentStoryIndex, stories.length, onClose]);
 
   const nextStory = () => {
     if (currentStoryIndex < stories.length - 1) {
@@ -101,22 +121,53 @@ const StoryViewer = ({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] bg-[#1a1a1a] flex items-center justify-center overflow-hidden"
       onClick={onClose}
     >
+      {/* Background Blur */}
+      <div className="absolute inset-0 z-0">
+        <img 
+          src={story.media[0].url} 
+          alt="" 
+          className="w-full h-full object-cover blur-3xl opacity-30"
+        />
+      </div>
+
+      {/* Navigation Arrows (Desktop) */}
+      <button 
+        onClick={(e) => { e.stopPropagation(); prevStory(); }}
+        className={cn(
+          "hidden md:flex absolute left-4 lg:left-20 z-50 text-white/80 hover:text-white transition-all bg-white/10 p-3 rounded-full backdrop-blur-md",
+          currentStoryIndex === 0 && "opacity-0 pointer-events-none"
+        )}
+      >
+        <ChevronLeft size={32} strokeWidth={1.5} />
+      </button>
+
+      <button 
+        onClick={(e) => { e.stopPropagation(); nextStory(); }}
+        className="hidden md:flex absolute right-4 lg:right-20 z-50 text-white/80 hover:text-white transition-all bg-white/10 p-3 rounded-full backdrop-blur-md"
+      >
+        <ChevronRight size={32} strokeWidth={1.5} />
+      </button>
+
+      {/* Main Container */}
       <div 
-        className="relative w-full max-w-md aspect-[9/16] bg-gray-900 overflow-hidden md:rounded-xl shadow-2xl"
+        className="relative w-full h-full md:h-[90vh] md:max-w-[45vh] bg-black overflow-hidden md:rounded-lg shadow-2xl z-10"
         onClick={e => e.stopPropagation()}
       >
         {/* Progress Bars */}
-        <div className="absolute top-4 left-4 right-4 z-50 flex gap-1">
+        <div 
+          className="absolute top-2 left-2 right-2 z-50 flex px-1"
+          style={{ gap: stories.length > 100 ? '1px' : (stories.length > 50 ? '2px' : '4px') }}
+        >
           {stories.map((_, i) => (
-            <div key={i} className="h-0.5 flex-1 bg-white/30 rounded-full overflow-hidden">
+            <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-white transition-all duration-50"
+                className="h-full bg-white transition-all duration-75"
                 style={{ 
                   width: i < currentStoryIndex ? '100%' : (i === currentStoryIndex ? `${progress}%` : '0%') 
                 }}
@@ -126,29 +177,47 @@ const StoryViewer = ({
         </div>
 
         {/* Header */}
-        <div className="absolute top-8 left-4 right-4 z-50 flex items-center justify-between text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-black uppercase">
-              {story.username[0]}
+        <div className="absolute top-6 left-4 right-4 z-50 flex items-center justify-between text-white">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-white/10 p-0.5">
+              <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                {profilePic ? (
+                  <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="text-[10px] font-bold text-black uppercase">{story.username[0]}</span>
+                )}
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold">{story.username}</span>
-              <span className="text-[10px] opacity-70">{format(parseISO(story.date), 'MMM d')}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold">{story.username}</span>
+              <span className="text-[10px] opacity-60 font-medium">{format(parseISO(story.date), 'MMM d')}</span>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-            <X size={24} />
-          </button>
+          
+          <div className="flex items-center gap-1">
+            {story.media[0].type === 'video' && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
+                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Media */}
-        <div className="w-full h-full flex items-center justify-center">
+        <div className="w-full h-full flex items-center justify-center pointer-events-none">
           {story.media[0].type === 'video' ? (
             <video 
+              ref={videoRef}
               src={story.media[0].url} 
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
               autoPlay 
-              muted 
+              muted={isMuted}
               playsInline
               onEnded={nextStory}
             />
@@ -156,21 +225,21 @@ const StoryViewer = ({
             <img 
               src={story.media[0].url} 
               alt="" 
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
               referrerPolicy="no-referrer"
             />
           )}
         </div>
 
-        {/* Navigation Areas */}
-        <div className="absolute inset-0 flex">
-          <div className="w-1/3 h-full cursor-pointer" onClick={prevStory} />
-          <div className="w-2/3 h-full cursor-pointer" onClick={nextStory} />
+        {/* Interaction Areas */}
+        <div className="absolute inset-0 z-20 flex">
+          <div className="w-1/4 h-full cursor-pointer" onClick={prevStory} title="Previous Story" />
+          <div className="w-3/4 h-full cursor-pointer" onClick={nextStory} title="Next Story" />
         </div>
 
-        {/* Caption */}
+        {/* Caption Overlay */}
         {story.caption && (
-          <div className="absolute bottom-10 left-4 right-4 z-50 text-white text-sm text-center drop-shadow-md">
+          <div className="absolute bottom-16 left-4 right-4 z-50 bg-black/20 backdrop-blur-sm p-3 rounded-lg text-white text-xs text-center border border-white/10">
             {story.caption}
           </div>
         )}
@@ -290,6 +359,7 @@ const VideoThumbnail = ({ url, className }: { url: string; className?: string })
 };
 
 const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; className?: string; isFullView?: boolean }) => {
+  const [isMuted, setIsMuted] = useState(false);
   const sizingClass = isFullView 
     ? "w-full h-auto block" 
     : "w-full h-full object-cover";
@@ -298,18 +368,27 @@ const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; class
 
   if (file.type === 'video') {
     return (
-      <video 
-        src={file.url} 
-        className={cn(
-          "transition-all duration-300", 
-          sizingClass,
-          className
-        )}
-        style={mediaStyle}
-        controls
-        playsInline
-        autoPlay
-      />
+      <div className="relative w-full h-full flex items-center justify-center">
+        <video 
+          src={file.url} 
+          className={cn(
+            "transition-all duration-300", 
+            sizingClass,
+            className
+          )}
+          style={mediaStyle}
+          playsInline
+          autoPlay
+          muted={isMuted}
+          loop
+        />
+        <button 
+          onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
+          className="absolute bottom-4 right-4 z-30 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full backdrop-blur-md transition-all"
+        >
+          {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+        </button>
+      </div>
     );
   }
   return (
@@ -330,7 +409,6 @@ const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; class
 const PostModal = ({ 
   post, 
   onClose, 
-  initialFullView = false,
   onNextPost,
   onPrevPost,
   hasNextPost,
@@ -339,7 +417,6 @@ const PostModal = ({
 }: { 
   post: Post; 
   onClose: () => void; 
-  initialFullView?: boolean;
   onNextPost?: () => void;
   onPrevPost?: () => void;
   hasNextPost?: boolean;
@@ -347,7 +424,6 @@ const PostModal = ({
   profilePic: string | null;
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFullView, setIsFullView] = useState(initialFullView);
   const [direction, setDirection] = useState(0);
 
   // Reset currentIndex when post changes
@@ -464,14 +540,8 @@ const PostModal = ({
           onClick={e => e.stopPropagation()}
         >
           {/* Media Section */}
-          <div className={cn(
-            "relative bg-black flex items-center justify-center group overflow-hidden",
-            isFullView ? "w-full h-auto" : "w-full aspect-square"
-          )}>
-            <div className={cn(
-              "w-full grid grid-cols-1 grid-rows-1",
-              isFullView ? "" : "absolute inset-0 h-full"
-            )}>
+          <div className="relative bg-black flex items-center justify-center group overflow-hidden w-full h-auto">
+            <div className="w-full grid grid-cols-1 grid-rows-1">
               <AnimatePresence initial={false} custom={direction}>
                 <motion.div
                   key={`${post.id}-${currentIndex}`}
@@ -504,28 +574,12 @@ const PostModal = ({
                       }
                     }
                   }}
-                  className={cn(
-                    "col-start-1 row-start-1 w-full flex items-center justify-center cursor-grab active:cursor-grabbing",
-                    isFullView ? "relative" : "h-full"
-                  )}
+                  className="col-start-1 row-start-1 w-full flex items-center justify-center cursor-grab active:cursor-grabbing relative"
                 >
-                  <MediaRenderer file={post.media[currentIndex]} isFullView={isFullView} />
+                  <MediaRenderer file={post.media[currentIndex]} isFullView={true} />
                 </motion.div>
               </AnimatePresence>
             </div>
-            
-            {/* Full/Square Toggle Overlay */}
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFullView(!isFullView);
-              }}
-              className="absolute top-4 left-4 md:top-4 md:right-4 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full backdrop-blur-md transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider z-30 md:opacity-0 md:group-hover:opacity-100"
-              title={isFullView ? "Crop to Square" : "View Original Aspect Ratio"}
-            >
-              {isFullView ? <Grid3X3 size={16} /> : <Layers size={16} />}
-              <span className="hidden sm:inline">{isFullView ? "Square" : "Full"}</span>
-            </button>
             
             {post.media.length > 1 && (
               <>
@@ -1052,7 +1106,7 @@ export default function App() {
         });
 
       const posts = allItems.filter(p => !p.isStory).sort((a, b) => b.date.localeCompare(a.date));
-      const stories = allItems.filter(p => p.isStory).sort((a, b) => b.date.localeCompare(a.date));
+      const stories = allItems.filter(p => p.isStory).sort((a, b) => a.date.localeCompare(b.date));
 
       console.log(`Finalized ${posts.length} posts and ${stories.length} stories.`);
       setAllPosts(posts);
@@ -1376,7 +1430,6 @@ export default function App() {
           <PostModal 
             post={selectedPost} 
             onClose={() => setSelectedPost(null)} 
-            initialFullView={activeTab === 'reels' || gridAspectRatio === '3:4'}
             onNextPost={onNextPost}
             onPrevPost={onPrevPost}
             hasNextPost={postIndex < filteredPosts.length - 1}
@@ -1389,9 +1442,10 @@ export default function App() {
       {/* Story Viewer */}
       <AnimatePresence>
         {showStoryViewer && allStories.length > 0 && (
-          <StoryViewer 
-            stories={allStories} 
-            onClose={() => setShowStoryViewer(false)} 
+          <StoryViewer
+            stories={allStories}
+            onClose={() => setShowStoryViewer(false)}
+            profilePic={profilePic}
           />
         )}
       </AnimatePresence>
