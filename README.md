@@ -5,6 +5,7 @@ A high-performance React PWA for browsing archived Instagram data with a native-
 ## Features
 
 - **Persistent Caching**: Uses IndexedDB to store parsed archives locally. Subsequent loads are near-instant.
+- **Permalinks**: State is synchronized with the URL, allowing you to share direct links to archives, tabs, or specific posts.
 - **Glassy Scanning UI**: A modern, translucent white terminal experience with a dynamic blurred background of your media.
 - **Local Privacy**: All processing is done client-side. Even when using the self-hosted version, your media is processed locally in your browser.
 - **Multiple Formats**: Supports official Instagram JSON exports and Instaloader regex-based naming conventions.
