@@ -4,40 +4,67 @@ A high-performance React PWA for browsing archived Instagram data with a native-
 
 ## Features
 
-- **Local Privacy**: All processing is done client-side using browser APIs. Your data never leaves your computer.
+- **Persistent Caching**: Uses IndexedDB to store parsed archives locally. Subsequent loads are near-instant.
+- **Glassy Scanning UI**: A modern, translucent white terminal experience with a dynamic blurred background of your media.
+- **Local Privacy**: All processing is done client-side. Even when using the self-hosted version, your media is processed locally in your browser.
 - **Multiple Formats**: Supports official Instagram JSON exports and Instaloader regex-based naming conventions.
-- **Metadata Support**: Robust parsing of `.json` and `.json.xz` files for captions, timestamps, and story metadata.
 - **Story Viewer**: Native-like story experience with segmented progress bars, auto-playback, and audio controls.
-- **Media Grid**: Customizable 1:1 or 3:4 grid views with adjustable offsets for aesthetic alignment.
-- **Auto-Deduplication**: Intelligently prefers video files over thumbnail images for the same post.
+- **Customizable Grid**: 1:1 or 3:4 aspect ratios with adjustable "bumps" for aesthetic alignment.
+- **Navigation Protection**: Intercepts accidental browser "Back" or "Refresh" actions to protect your current session.
 
-## Run Locally
+## Deployment
+
+### Docker (Recommended)
+
+The easiest way to run InstaArchive is using Docker.
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v /path/to/your/archives:/archives:ro \
+  ghcr.io/ergosteur/instaarchive-viewer:latest
+```
+
+### Docker Compose
+
+Create a `compose.yml` file:
+
+```yaml
+services:
+  instaarchive:
+    image: ghcr.io/ergosteur/instaarchive-viewer:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./archives:/archives:ro
+```
+
+Run with:
+```bash
+docker compose up -d
+```
+
+## Supported Archive Structure
+
+Place your archive folders inside the mounted `/archives` directory. The directory name will be used as the account username.
+
+### Example Structure:
+```text
+archives/
+├── wanderlust_explorer/          # Instaloader format
+│   ├── 2024-01-01_12-00-00_UTC.jpg
+│   ├── 2024-01-01_12-00-00_UTC.json.xz
+│   └── wanderlust_explorer_profile_pic.jpg
+└── pixel_architect/             # Instagram Export format
+    ├── 2023-12-25_pixel_architect - post_123.jpg
+    ├── 2023-12-25_pixel_architect - post_123.json
+    └── pixel_architect.jpg
+```
+
+## Local Development
 
 **Prerequisites:** Node.js (LTS recommended)
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-2. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
-
-3. **Open in browser:**
-   Navigate to `http://localhost:3000` and select your Instagram archive directory.
-
-## Building for Production
-
-To generate a production-ready build in the `dist` folder:
-
-```bash
-npm run build
-```
-
-To preview the build:
-
-```bash
-npm run preview
-```
+1. **Install dependencies:** `npm install`
+2. **Start dev server:** `npm run dev`
+3. **Start local backend:** `npm run server` (Optional, serves `./_sample-archives`)
