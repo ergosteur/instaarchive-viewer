@@ -579,7 +579,7 @@ const PostModal = ({
             </div>
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 min-h-0 md:max-h-[60vh] text-black">
               <div className="flex gap-3 text-black">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover text-black" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div>
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div>
                 <div className="text-sm text-black"><span className="font-semibold mr-2 text-black">{post.username}</span><span className="whitespace-pre-wrap text-black">{post.caption}</span><div className="mt-2 text-xs text-gray-500 uppercase tracking-tight text-black">{format(parseISO(post.date), 'MMMM d, yyyy')}</div></div>
               </div>
             </div>
@@ -738,7 +738,10 @@ export default function App() {
 
         if (lowerName.includes('_profile_pic.jpg') || (detectedUsername && lowerName === `${detectedUsername.toLowerCase()}.jpg`)) {
           try {
-            const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: 'image/jpeg' }));
+            const url = file.url || (await (async () => {
+              const blob = new Blob([await file.arrayBuffer()], { type: 'image/jpeg' });
+              return URL.createObjectURL(blob);
+            })());
             discoveredProfilePics.push({ name: file.name, url });
             if (format === 'unknown' && lowerName.includes('_profile_pic.jpg')) format = 'instaloader';
           } catch(e) {}
@@ -751,7 +754,6 @@ export default function App() {
 
       console.log(`[Scanner] Format Detection Complete. Result: ${format}. Media indexed: ${mediaFilesMap.size}`);
 
-      // Pass 2: JSON Parsing
       if (jsonFiles.length > 0 && (format === 'json' || format === 'instaloader')) {
         setScanningPhase('Parsing');
         for (let i = 0; i < jsonFiles.length; i++) {
@@ -809,7 +811,6 @@ export default function App() {
         }
       } 
       
-      // Pass 3: Regex Parsing
       if (format === 'export' || format === 'instaloader') {
         setScanningPhase('Parsing');
         const CHUNK_SIZE = 100;
@@ -862,7 +863,6 @@ export default function App() {
         }
       }
 
-      // Pass 4: Generic Fallback
       if (postsMap.size === 0) {
         console.log(`[Scanner] No posts found with standard patterns. Using mediaFilesMap: ${mediaFilesMap.size}`);
         setScanningPhase('Parsing');
@@ -1017,7 +1017,7 @@ export default function App() {
   const loadMore = () => setVisiblePostsCount(prev => prev + 90);
 
   useEffect(() => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(window.location.search);
     if (currentArchive) params.set('a', currentArchive.name);
     else if (allPosts.length > 0 && username) params.set('a', username);
     if (activeTab !== 'posts') params.set('t', activeTab);
@@ -1066,16 +1066,16 @@ export default function App() {
       <input type="file" ref={fileInputRef} className="hidden" webkitdirectory="" multiple onChange={(e) => handleLocalFiles(e.target.files)} />
 
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 h-16 flex items-center px-4 md:px-8">
-        <div className="max-w-5xl mx-auto w-full flex items-center justify-between">
+        <div className="max-w-5xl mx-auto w-full flex items-center justify-between text-black">
           <h1 className="text-lg md:text-xl font-bold tracking-tight italic font-serif cursor-pointer text-black/80" onClick={() => { setAllPosts([]); setAllStories([]); setCurrentArchive(null); resetProfileState(); }}>InstaArchive</h1>
           <div className="flex items-center gap-2 md:gap-8 text-black">
             {allPosts.length > 0 && activeTab === 'posts' && (
-              <div className="flex items-center gap-2 md:gap-6">
-                <div className="flex items-center gap-1.5 md:gap-2"><span className="hidden sm:inline text-[10px] font-bold uppercase text-gray-400 tracking-wider">Bump:</span>
-                  <div className="flex bg-gray-100 p-0.5 md:p-1 rounded-lg">{[0, 1, 2].map((offset) => (<button key={offset} onClick={() => setGridOffset(offset)} className={cn("px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all", gridOffset === offset ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700")}>{offset}</button>))}</div>
+              <div className="flex items-center gap-2 md:gap-6 text-black">
+                <div className="flex items-center gap-1.5 md:gap-2 text-black"><span className="hidden sm:inline text-[10px] font-bold uppercase text-gray-400 tracking-wider">Bump:</span>
+                  <div className="flex bg-gray-100 p-0.5 md:p-1 rounded-lg text-black">{[0, 1, 2].map((offset) => (<button key={offset} onClick={() => setGridOffset(offset)} className={cn("px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all", gridOffset === offset ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700")}>{offset}</button>))}</div>
                 </div>
-                <div className="flex items-center gap-1.5 md:gap-2"><span className="hidden sm:inline text-[10px] font-bold uppercase text-gray-400 tracking-wider">Grid:</span>
-                  <div className="flex bg-gray-100 p-0.5 md:p-1 rounded-lg"><button onClick={() => setGridAspectRatio('1:1')} className={cn("px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all", gridAspectRatio === '1:1' ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700")}>1:1</button><button onClick={() => setGridAspectRatio('3:4')} className={cn("px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all", gridAspectRatio === '3:4' ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700")}>3:4</button></div>
+                <div className="flex items-center gap-1.5 md:gap-2 text-black"><span className="hidden sm:inline text-[10px] font-bold uppercase text-gray-400 tracking-wider">Grid:</span>
+                  <div className="flex bg-gray-100 p-0.5 md:p-1 rounded-lg text-black"><button onClick={() => setGridAspectRatio('1:1')} className={cn("px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all", gridAspectRatio === '1:1' ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700")}>1:1</button><button onClick={() => setGridAspectRatio('3:4')} className={cn("px-2 md:px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase transition-all", gridAspectRatio === '3:4' ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-gray-700")}>3:4</button></div>
                 </div>
               </div>
             )}
@@ -1098,58 +1098,58 @@ export default function App() {
             />
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-6 text-black">
-              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400"><Grid3X3 size={48} strokeWidth={1} /></div>
-              <div className="space-y-2"><h2 className="text-2xl font-semibold text-black/80">No Archive Selected</h2><p className="text-gray-500 max-md text-sm md:text-base">Select a local archive folder to start browsing. Your files are processed locally in the browser and never uploaded.</p></div>
+              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 text-black"><Grid3X3 size={48} strokeWidth={1} /></div>
+              <div className="space-y-2 text-black"><h2 className="text-2xl font-semibold text-black/80">No Archive Selected</h2><p className="text-gray-500 max-md text-sm md:text-base text-black">Select a local archive folder to start browsing. Your files are processed locally in the browser and never uploaded.</p></div>
               <button onClick={triggerFileSelect} disabled={isScanning} className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2">{isScanning ? <><Loader2 className="animate-spin" size={20} /><span className="animate-dots">Scanning</span></> : 'Select Local Archive Folder'}</button>
             </div>
           )
         ) : isScanning ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
-            <AnimatePresence>{currentScanningImage && (<motion.div key={currentScanningImage} initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} exit={{ opacity: 0 }} className="absolute inset-0 z-0"><img src={currentScanningImage} alt="" className="w-full h-full object-cover blur-[100px] scale-110" /></motion.div>)}</AnimatePresence>
-            <div className="absolute inset-0 bg-white/20 z-1" />
-            <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center gap-8">
-              <div className="text-center space-y-2"><div className="text-4xl font-bold tracking-tight italic font-serif text-black/80 drop-shadow-sm">Scanning Archive...</div><div className="flex items-center justify-center gap-3"><div className="h-[1px] w-12 bg-black/10" /><p className="text-black/40 text-[10px] uppercase tracking-[0.3em] font-bold">{scanningPhase === 'Indexing' ? 'Building file index' : 'Parsing metadata & media'}</p><div className="h-[1px] w-12 bg-black/10" /></div></div>
-              <div className="w-full max-w-2xl space-y-4"><div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-black/40 px-1"><span className="flex items-center gap-2"><Loader2 size={12} className="animate-spin" />Phase: {scanningPhase}</span><span>{scannedCount} / {totalFiles}</span></div><div className="w-full h-1.5 bg-black/5 rounded-full overflow-hidden backdrop-blur-sm border border-black/5 shadow-inner"><motion.div className="h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" initial={{ width: 0 }} animate={{ width: `${(scannedCount / (totalFiles || 1)) * 100}%` }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }} /></div></div>
-              <div className="w-full bg-white/40 backdrop-blur-3xl rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] border border-white/40 overflow-hidden h-[500px] flex flex-col text-black"><div className="flex items-center justify-between border-b border-black/5 py-3 px-5 bg-white/20 shrink-0"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-black/10" /><div className="w-2.5 h-2.5 rounded-full bg-black/10" /><div className="w-2.5 h-2.5 rounded-full bg-black/10" /><span className="ml-3 text-black/30 uppercase tracking-[0.2em] text-[9px] font-bold">System Parser Feed</span></div><div className="text-[9px] font-bold text-black/20 uppercase tracking-widest">Live Output</div></div><div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide p-4">{scannedFilesLog.map((log, idx) => (<div key={`${idx}-${log}`} className="flex gap-4 leading-tight text-[11px] md:text-[12px] font-medium"><span className="text-black/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span><span className={cn("shrink-0 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold tracking-wider", scanningPhase === 'Indexing' ? "bg-green-500/10 text-green-600/70" : "bg-blue-500/10 text-blue-600/70")}>{scanningPhase === 'Indexing' ? 'IDX' : 'PARSE'}</span><span className="truncate text-black/60">{log}</span></div>))}{scannedFilesLog.length === 0 && <div className="animate-pulse text-black/20 font-mono text-center mt-20 italic">Initializing scanner context...</div>}</div></div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden text-black">
+            <AnimatePresence>{currentScanningImage && (<motion.div key={currentScanningImage} initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} exit={{ opacity: 0 }} className="absolute inset-0 z-0 text-black"><img src={currentScanningImage} alt="" className="w-full h-full object-cover blur-[100px] scale-110 text-black" /></motion.div>)}</AnimatePresence>
+            <div className="absolute inset-0 bg-white/20 z-1 text-black" />
+            <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center gap-8 text-black">
+              <div className="text-center space-y-2 text-black"><div className="text-4xl font-bold tracking-tight italic font-serif text-black/80 drop-shadow-sm text-black">Scanning Archive...</div><div className="flex items-center justify-center gap-3 text-black"><div className="h-[1px] w-12 bg-black/10 text-black" /><p className="text-black/40 text-[10px] uppercase tracking-[0.3em] font-bold text-black">{scanningPhase === 'Indexing' ? 'Building file index' : 'Parsing metadata & media'}</p><div className="h-[1px] w-12 bg-black/10 text-black" /></div></div>
+              <div className="w-full max-w-2xl space-y-4 text-black"><div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-black/40 px-1 text-black"><span className="flex items-center gap-2 text-black"><Loader2 size={12} className="animate-spin text-black" />Phase: {scanningPhase}</span><span className="text-black">{scannedCount} / {totalFiles}</span></div><div className="w-full h-1.5 bg-black/5 rounded-full overflow-hidden backdrop-blur-sm border border-black/5 shadow-inner text-black"><motion.div className="h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)] text-black" initial={{ width: 0 }} animate={{ width: `${(scannedCount / (totalFiles || 1)) * 100}%` }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }} /></div></div>
+              <div className="w-full bg-white/40 backdrop-blur-3xl rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] border border-white/40 overflow-hidden h-[500px] flex flex-col text-black"><div className="flex items-center justify-between border-b border-black/5 py-3 px-5 bg-white/20 shrink-0 text-black"><div className="flex items-center gap-2 text-black"><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><span className="ml-3 text-black/30 uppercase tracking-[0.2em] text-[9px] font-bold text-black">System Parser Feed</span></div><div className="text-[9px] font-bold text-black/20 uppercase tracking-widest text-black">Live Output</div></div><div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide p-4 text-black">{scannedFilesLog.map((log, idx) => (<div key={`${idx}-${log}`} className="flex gap-4 leading-tight text-[11px] md:text-[12px] font-medium text-black"><span className="text-black/20 shrink-0 tabular-nums text-black">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span><span className={cn("shrink-0 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold tracking-wider text-black", scanningPhase === 'Indexing' ? "bg-green-500/10 text-green-600/70" : "bg-blue-500/10 text-blue-600/70")}>{scanningPhase === 'Indexing' ? 'IDX' : 'PARSE'}</span><span className="truncate text-black/60 text-black">{log}</span></div>))}{scannedFilesLog.length === 0 && <div className="animate-pulse text-black/20 font-mono text-center mt-20 italic text-black">Initializing scanner context...</div>}</div></div>
             </div>
           </div>
         ) : (
           <div className="space-y-12 text-black">
             <header className="flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-20 px-4 text-black">
-              <div className={cn("w-24 h-24 md:w-36 md:h-36 rounded-full p-1 cursor-pointer transition-transform active:scale-95", allStories.length > 0 ? "bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600" : "bg-gray-200" )} onClick={() => allStories.length > 0 && setShowStoryViewer(true)}><div className="w-full h-full rounded-full bg-white p-1"><div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center overflow-hidden text-black">{profilePic ? <img src={profilePic} alt={username} className="w-full h-full object-cover" onError={() => setProfilePic(null)} referrerPolicy="no-referrer" /> : <span className="text-3xl font-bold text-gray-400 uppercase">{username[0]}</span>}</div></div></div>
+              <div className={cn("w-24 h-24 md:w-36 md:h-36 rounded-full p-1 cursor-pointer transition-transform active:scale-95 text-black", allStories.length > 0 ? "bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600" : "bg-gray-200" )} onClick={() => allStories.length > 0 && setShowStoryViewer(true)}><div className="w-full h-full rounded-full bg-white p-1 text-black"><div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center overflow-hidden text-black">{profilePic ? <img src={profilePic} alt={username} className="w-full h-full object-cover text-black" onError={() => setProfilePic(null)} referrerPolicy="no-referrer" /> : <span className="text-3xl font-bold text-gray-400 uppercase text-black">{username[0]}</span>}</div></div></div>
               <div className="flex-1 space-y-6 text-center md:text-left text-black">
                 <div className="flex flex-col md:flex-row items-center gap-4 text-black">
                   <h2 className="text-2xl font-light tracking-wide text-black">{username}</h2>
                   <div className="flex gap-2 text-black">
-                    <input type="file" ref={profilePicInputRef} className="hidden" accept="image/*" onChange={handleProfilePicChange} />
-                    {allProfilePics.length === 0 && <button onClick={() => profilePicInputRef.current?.click()} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors">Set Profile Picture</button>}
-                    {allProfilePics.length > 1 && <button onClick={cycleProfilePic} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"><Layers size={16} />Next Profile Pic</button>}
+                    <input type="file" ref={profilePicInputRef} className="hidden text-black" accept="image/*" onChange={handleProfilePicChange} />
+                    {allProfilePics.length === 0 && <button onClick={() => profilePicInputRef.current?.click()} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors text-black">Set Profile Picture</button>}
+                    {allProfilePics.length > 1 && <button onClick={cycleProfilePic} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 text-black"><Layers size={16} />Next Profile Pic</button>}
                   </div>
                 </div>
-                <div className="flex justify-center md:justify-start gap-10 text-sm md:text-base text-black"><div><span className="font-semibold text-black/80">{allPosts.length}</span> posts</div><div><span className="font-semibold text-black/80">{followerCount.toLocaleString()}</span> followers</div><div><span className="font-semibold text-black/80">{followingCount.toLocaleString()}</span> following</div></div>
-                <div className="space-y-1 text-black/80"><div className="font-semibold text-black">{fullName || `@${username}`}</div><div className="text-gray-600 whitespace-pre-wrap max-w-sm mx-auto md:mx-0 text-sm md:text-base text-black">{bio || 'Archived profile viewer for local files.'}</div>{externalUrl && <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="text-blue-900 font-semibold text-sm block hover:underline truncate max-w-[250px]">{externalUrl.replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>
+                <div className="flex justify-center md:justify-start gap-10 text-sm md:text-base text-black"><div><span className="font-semibold text-black/80 text-black">{allPosts.length}</span> posts</div><div><span className="font-semibold text-black/80 text-black">{followerCount.toLocaleString()}</span> followers</div><div><span className="font-semibold text-black/80 text-black">{followingCount.toLocaleString()}</span> following</div></div>
+                <div className="space-y-1 text-black/80 text-black"><div className="font-semibold text-black">{fullName || `@${username}`}</div><div className="text-gray-600 whitespace-pre-wrap max-w-sm mx-auto md:mx-0 text-sm md:text-base text-black">{bio || 'Archived profile viewer for local files.'}</div>{externalUrl && <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="text-blue-900 font-semibold text-sm block hover:underline truncate max-w-[250px] text-black">{externalUrl.replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>
               </div>
             </header>
 
             <div className="border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4 text-black">
               <div className="flex justify-center gap-12 flex-1 text-black">
-                <button onClick={() => handleTabChange('posts')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all", activeTab === 'posts' ? "border-black text-black" : "border-transparent text-gray-400")}><Grid3X3 size={14} />Posts</button>
-                <button onClick={() => handleTabChange('reels')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all", activeTab === 'reels' ? "border-black text-black" : "border-transparent text-gray-400")}><Play size={14} />Reels</button>
-                <button onClick={() => handleTabChange('saved')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all", activeTab === 'saved' ? "border-black text-black" : "border-transparent text-gray-400")}><Bookmark size={14} />Saved</button>
+                <button onClick={() => handleTabChange('posts')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all text-black", activeTab === 'posts' ? "border-black text-black" : "border-transparent text-gray-400")}><Grid3X3 size={14} />Posts</button>
+                <button onClick={() => handleTabChange('reels')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all text-black", activeTab === 'reels' ? "border-black text-black" : "border-transparent text-gray-400")}><Play size={14} />Reels</button>
+                <button onClick={() => handleTabChange('saved')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all text-black", activeTab === 'saved' ? "border-black text-black" : "border-transparent text-gray-400")}><Bookmark size={14} />Saved</button>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-[2px] md:gap-[2px] text-black">
-              {activeTab === 'posts' && Array.from({ length: gridOffset }).map((_, i) => (<div key={`blank-${i}`} className={cn("bg-gray-100/50 border border-dashed border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase tracking-tighter", gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]")}>Blank</div>))}
+              {activeTab === 'posts' && Array.from({ length: gridOffset }).map((_, i) => (<div key={`blank-${i}`} className={cn("bg-gray-100/50 border border-dashed border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase tracking-tighter text-black", gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]")}>Blank</div>))}
               {visiblePosts.map((post) => (
-                <motion.div key={post.id} layoutId={post.id} onClick={() => setSelectedPost(post)} className={cn("relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300", activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"))}>
+                <motion.div key={post.id} layoutId={post.id} onClick={() => setSelectedPost(post)} className={cn("relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300 text-black", activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"))}>
                   {post.media[0].type === 'video' ? <VideoThumbnail url={post.media[0].url} /> : <img src={post.thumbnail} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 text-black" referrerPolicy="no-referrer" />}
-                  <div className="absolute top-2 right-2 flex gap-1.5 z-10 text-black">{post.media.length > 1 && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm"><Layers size={16} /></div>}{post.media.some(m => m.type === 'video') && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm"><Play size={16} fill="white" /></div>}</div>
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold z-20 text-black"><div className="flex items-center gap-2"><Heart fill="white" size={20} /><span>-</span></div><div className="flex items-center gap-2"><MessageCircle fill="white" size={20} /><span>-</span></div></div>
+                  <div className="absolute top-2 right-2 flex gap-1.5 z-10 text-black">{post.media.length > 1 && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm text-black"><Layers size={16} /></div>}{post.media.some(m => m.type === 'video') && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm text-black"><Play size={16} fill="white" /></div>}</div>
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold z-20 text-black"><div className="flex items-center gap-2 text-black"><Heart fill="white" size={20} className="text-black" /><span>-</span></div><div className="flex items-center gap-2 text-black"><MessageCircle fill="white" size={20} className="text-black" /><span>-</span></div></div>
                 </motion.div>
               ))}
             </div>
-            {filteredPosts.length > visiblePostsCount && <div className="flex justify-center pt-12 text-black"><button onClick={loadMore} className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm text-black">Load More</button></div>}
+            {filteredPosts.length > visiblePostsCount && <div className="flex justify-center pt-12 text-black text-black"><button onClick={loadMore} className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm text-black text-black">Load More</button></div>}
           </div>
         )}
       </main>
@@ -1159,8 +1159,8 @@ export default function App() {
 
       {!isScanning && (
         <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-xs text-gray-400 space-y-4 text-black">
-          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight text-black"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
-          <div className="text-black/40">© 2026 InstaArchive Viewer</div>
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight text-black text-black"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
+          <div className="text-black/40 text-black">© 2026 InstaArchive Viewer</div>
         </footer>
       )}
     </div>
