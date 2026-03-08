@@ -23,8 +23,9 @@ import { Post, ServerArchive } from './types';
 import { ArchiveDashboard } from './components/ArchiveDashboard';
 import { StoryViewer } from './components/StoryViewer';
 import { PostModal } from './components/PostModal';
-import { VideoThumbnail } from './components/VideoThumbnail';
+import { PostThumbnail } from './components/PostThumbnail';
 import { useArchiveScanner } from './hooks/useArchiveScanner';
+import { useThumbnailQueue } from './hooks/useThumbnailQueue';
 
 export default function App() {
   const [showStoryViewer, setShowStoryViewer] = useState(false);
@@ -42,6 +43,8 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profilePicInputRef = useRef<HTMLInputElement>(null);
+
+  const { cacheHits, requestThumbnail } = useThumbnailQueue();
 
   const refreshCachedArchives = useCallback(async () => {
     try {
@@ -81,6 +84,8 @@ export default function App() {
     setScanningPhase,
     resetScannerState
   } = useArchiveScanner('', currentArchive, refreshCachedArchives);
+
+  const [lastLoadedScanningImage, setLastLoadedScanningImage] = useState<string | null>(null);
 
   const {
     username,
@@ -285,13 +290,31 @@ export default function App() {
             </div>
           )
         ) : isScanning ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden text-black">
-            <AnimatePresence>{currentScanningImage && (<motion.div key={currentScanningImage} initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} exit={{ opacity: 0 }} className="absolute inset-0 z-0 text-black"><img src={currentScanningImage} alt="" className="w-full h-full object-cover blur-[100px] scale-110 text-black" /></motion.div>)}</AnimatePresence>
-            <div className="absolute inset-0 bg-white/20 z-1 text-black" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden text-black bg-gray-900">
+            {currentScanningImage && (
+              <img 
+                src={currentScanningImage} 
+                className="hidden" 
+                onLoad={() => setLastLoadedScanningImage(currentScanningImage)} 
+              />
+            )}
+            <div className="absolute inset-0 z-0">
+              <AnimatePresence initial={false}>
+                <motion.img 
+                  key={lastLoadedScanningImage}
+                  src={lastLoadedScanningImage || undefined}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.25 }}
+                  transition={{ duration: 1.5 }}
+                  className="absolute inset-0 w-full h-full object-cover blur-[25px] scale-110"
+                />
+              </AnimatePresence>
+            </div>
+            <div className="absolute inset-0 bg-black/20 z-1" />
             <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center gap-8 text-black">
               <div className="text-center space-y-2 text-black"><div className="text-4xl font-bold tracking-tight italic font-serif text-black/80 drop-shadow-sm text-black">Scanning Archive...</div><div className="flex items-center justify-center gap-3 text-black"><div className="h-[1px] w-12 bg-black/10 text-black" /><p className="text-black/40 text-[10px] uppercase tracking-[0.3em] font-bold text-black">{scanningPhase === 'Indexing' ? 'Building file index' : 'Parsing metadata & media'}</p><div className="h-[1px] w-12 bg-black/10 text-black" /></div></div>
               <div className="w-full max-w-2xl space-y-4 text-black"><div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-black/40 px-1 text-black"><span className="flex items-center gap-2 text-black"><Loader2 size={12} className="animate-spin text-black" />Phase: {scanningPhase}</span><span className="text-black">{scannedCount} / {totalFiles}</span></div><div className="w-full h-1.5 bg-black/5 rounded-full overflow-hidden backdrop-blur-sm border border-black/5 shadow-inner text-black"><motion.div className="h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)] text-black" initial={{ width: 0 }} animate={{ width: `${(scannedCount / (totalFiles || 1)) * 100}%` }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }} /></div></div>
-              <div className="w-full bg-white/40 backdrop-blur-3xl rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] border border-white/40 overflow-hidden h-[500px] flex flex-col text-black"><div className="flex items-center justify-between border-b border-black/5 py-3 px-5 bg-white/20 shrink-0 text-black"><div className="flex items-center gap-2 text-black"><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><span className="ml-3 text-black/30 uppercase tracking-[0.2em] text-[9px] font-bold text-black">System Parser Feed</span></div><div className="text-[9px] font-bold text-black/20 uppercase tracking-widest text-black">Live Output</div></div><div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide p-4 text-black">{scannedFilesLog.map((log, idx) => (<div key={`${idx}-${log}`} className="flex gap-4 leading-tight text-[11px] md:text-[12px] font-medium text-black"><span className="text-black/20 shrink-0 tabular-nums text-black">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span><span className={cn("shrink-0 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold tracking-wider text-black", scanningPhase === 'Indexing' ? "bg-green-500/10 text-green-600/70" : "bg-blue-500/10 text-blue-600/70")}>{scanningPhase === 'Indexing' ? 'IDX' : 'PARSE'}</span><span className="truncate text-black/60 text-black">{log}</span></div>))}{scannedFilesLog.length === 0 && <div className="animate-pulse text-black/20 font-mono text-center mt-20 italic text-black">Initializing scanner context...</div>}</div></div>
+              <div className="w-full bg-white/5 backdrop-blur-lg rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] border border-white/10 overflow-hidden h-[500px] flex flex-col text-black"><div className="flex items-center justify-between border-b border-black/5 py-3 px-5 bg-white/10 shrink-0 text-black"><div className="flex items-center gap-2 text-black"><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><span className="ml-3 text-black/30 uppercase tracking-[0.2em] text-[9px] font-bold text-black">System Parser Feed</span></div><div className="text-[9px] font-bold text-black/20 uppercase tracking-widest text-black">Live Output</div></div><div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide p-4 text-black">{scannedFilesLog.map((log, idx) => (<div key={`${idx}-${log}`} className="flex gap-4 leading-tight text-[11px] md:text-[12px] font-medium text-black"><span className="text-black/20 shrink-0 tabular-nums text-black">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span><span className={cn("shrink-0 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold tracking-wider text-black", scanningPhase === 'Indexing' ? "bg-green-500/10 text-green-600/70" : "bg-blue-500/10 text-blue-600/70")}>{scanningPhase === 'Indexing' ? 'IDX' : 'PARSE'}</span><span className="truncate text-black/60 text-black">{log}</span></div>))}{scannedFilesLog.length === 0 && <div className="animate-pulse text-black/20 font-mono text-center mt-20 italic text-black">Initializing scanner context...</div>}</div></div>
             </div>
           </div>
         ) : (
@@ -324,7 +347,11 @@ export default function App() {
               {activeTab === 'posts' && Array.from({ length: gridOffset }).map((_, i) => (<div key={`blank-${i}`} className={cn("bg-gray-100/50 border border-dashed border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase tracking-tighter text-black", gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]")}>Blank</div>))}
               {visiblePosts.map((post) => (
                 <motion.div key={post.id} layoutId={post.id} onClick={() => setSelectedPost(post)} className={cn("relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300 text-black", activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"))}>
-                  {post.media[0].type === 'video' ? <VideoThumbnail url={post.media[0].url} /> : <img src={post.thumbnail} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 text-black" referrerPolicy="no-referrer" />}
+                  <PostThumbnail 
+                    post={post} 
+                    thumbnailUrl={cacheHits.get(post.id)} 
+                    onRequestThumbnail={requestThumbnail} 
+                  />
                   <div className="absolute top-2 right-2 flex gap-1.5 z-10 text-black">{post.media.length > 1 && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm text-black"><Layers size={16} /></div>}{post.media.some(m => m.type === 'video') && <div className="bg-black/40 backdrop-blur-md p-1 rounded-md text-white shadow-sm text-black"><Play size={16} fill="white" /></div>}</div>
                   <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold z-20 text-black"><div className="flex items-center gap-2 text-black"><Heart fill="white" size={20} className="text-black" /><span>-</span></div><div className="flex items-center gap-2 text-black"><MessageCircle fill="white" size={20} className="text-black" /><span>-</span></div></div>
                 </motion.div>
@@ -335,7 +362,21 @@ export default function App() {
         )}
       </main>
 
-      <AnimatePresence>{selectedPost && <PostModal post={selectedPost} onClose={() => setSelectedPost(null)} onNextPost={onNextPost} onPrevPost={onPrevPost} hasNextPost={postIndex < filteredPosts.length - 1} hasPrevPost={postIndex > 0} profilePic={profilePic} />}</AnimatePresence>
+      <AnimatePresence>
+        {selectedPost && (
+          <PostModal 
+            post={selectedPost} 
+            nextPost={postIndex < filteredPosts.length - 1 ? filteredPosts[postIndex + 1] : undefined}
+            prevPost={postIndex > 0 ? filteredPosts[postIndex - 1] : undefined}
+            onClose={() => setSelectedPost(null)} 
+            onNextPost={onNextPost} 
+            onPrevPost={onPrevPost} 
+            hasNextPost={postIndex < filteredPosts.length - 1} 
+            hasPrevPost={postIndex > 0} 
+            profilePic={profilePic} 
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>{showStoryViewer && allStories.length > 0 && <StoryViewer stories={allStories} onClose={() => setShowStoryViewer(false)} profilePic={profilePic} />}</AnimatePresence>
 
       {!isScanning && (

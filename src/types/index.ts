@@ -3,6 +3,7 @@ export interface MediaFile {
   url: string;
   type: 'image' | 'video';
   index: number;
+  size?: number;
 }
 
 export interface Post {

@@ -195,8 +195,8 @@ export const useArchiveScanner = (
                   const type = isVideo(matchedFile.name) ? 'video' : 'image';
                   const url = matchedFile.url || URL.createObjectURL(new Blob([await matchedFile.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
                   const existingMedia = post.media!.find(media => media.index === mIdx + 1);
-                  if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, url, type, index: mIdx + 1 } : media); }
-                  else post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1 });
+                  if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, url, type, index: mIdx + 1, size: matchedFile!.size } : media); }
+                  else post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1, size: matchedFile.size });
                 }
               }
               if (post.media!.length > 0) postsMap.set(postId, post);
@@ -251,8 +251,8 @@ export const useArchiveScanner = (
               const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
               if (type === 'image') throttledSetScanningImage(url);
               const existingMedia = post.media!.find(m => m.index === index);
-              if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(m => m.index === index ? { name: file.name, url, type, index } : m); }
-              else post.media!.push({ name: file.name, url, type, index });
+              if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(m => m.index === index ? { name: file.name, url, type, index, size: file.size } : m); }
+              else post.media!.push({ name: file.name, url, type, index, size: file.size });
             }
           }
           await new Promise(resolve => setTimeout(resolve, 0));
@@ -297,7 +297,7 @@ export const useArchiveScanner = (
               const type = isVideo(file.name) ? 'video' : 'image';
               const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
               if (type === 'image') throttledSetScanningImage(url);
-              post.media.push({ name: file.name, url, type, index: idx + 1 });
+              post.media.push({ name: file.name, url, type, index: idx + 1, size: file.size });
             }
             post.thumbnail = post.media[0].url;
             postsMap.set(postId, post);
