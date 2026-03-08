@@ -290,7 +290,7 @@ export default function App() {
             </div>
           )
         ) : isScanning ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden text-black bg-gray-900">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden text-black bg-[#f8fafc]">
             {currentScanningImage && (
               <img 
                 src={currentScanningImage} 
@@ -304,17 +304,17 @@ export default function App() {
                   key={lastLoadedScanningImage}
                   src={lastLoadedScanningImage || undefined}
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 0.25 }}
+                  animate={{ opacity: 0.4 }}
                   transition={{ duration: 1.5 }}
-                  className="absolute inset-0 w-full h-full object-cover blur-[25px] scale-110"
+                  className="absolute inset-0 w-full h-full object-cover blur-[60px] scale-110"
                 />
               </AnimatePresence>
             </div>
-            <div className="absolute inset-0 bg-black/20 z-1" />
+            <div className="absolute inset-0 bg-white/40 z-1" />
             <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center gap-8 text-black">
               <div className="text-center space-y-2 text-black"><div className="text-4xl font-bold tracking-tight italic font-serif text-black/80 drop-shadow-sm text-black">Scanning Archive...</div><div className="flex items-center justify-center gap-3 text-black"><div className="h-[1px] w-12 bg-black/10 text-black" /><p className="text-black/40 text-[10px] uppercase tracking-[0.3em] font-bold text-black">{scanningPhase === 'Indexing' ? 'Building file index' : 'Parsing metadata & media'}</p><div className="h-[1px] w-12 bg-black/10 text-black" /></div></div>
               <div className="w-full max-w-2xl space-y-4 text-black"><div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-black/40 px-1 text-black"><span className="flex items-center gap-2 text-black"><Loader2 size={12} className="animate-spin text-black" />Phase: {scanningPhase}</span><span className="text-black">{scannedCount} / {totalFiles}</span></div><div className="w-full h-1.5 bg-black/5 rounded-full overflow-hidden backdrop-blur-sm border border-black/5 shadow-inner text-black"><motion.div className="h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)] text-black" initial={{ width: 0 }} animate={{ width: `${(scannedCount / (totalFiles || 1)) * 100}%` }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }} /></div></div>
-              <div className="w-full bg-white/5 backdrop-blur-lg rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] border border-white/10 overflow-hidden h-[500px] flex flex-col text-black"><div className="flex items-center justify-between border-b border-black/5 py-3 px-5 bg-white/10 shrink-0 text-black"><div className="flex items-center gap-2 text-black"><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><span className="ml-3 text-black/30 uppercase tracking-[0.2em] text-[9px] font-bold text-black">System Parser Feed</span></div><div className="text-[9px] font-bold text-black/20 uppercase tracking-widest text-black">Live Output</div></div><div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide p-4 text-black">{scannedFilesLog.map((log, idx) => (<div key={`${idx}-${log}`} className="flex gap-4 leading-tight text-[11px] md:text-[12px] font-medium text-black"><span className="text-black/20 shrink-0 tabular-nums text-black">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span><span className={cn("shrink-0 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold tracking-wider text-black", scanningPhase === 'Indexing' ? "bg-green-500/10 text-green-600/70" : "bg-blue-500/10 text-blue-600/70")}>{scanningPhase === 'Indexing' ? 'IDX' : 'PARSE'}</span><span className="truncate text-black/60 text-black">{log}</span></div>))}{scannedFilesLog.length === 0 && <div className="animate-pulse text-black/20 font-mono text-center mt-20 italic text-black">Initializing scanner context...</div>}</div></div>
+              <div className="w-full bg-white/40 backdrop-blur-3xl rounded-2xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] border border-white/40 overflow-hidden h-[500px] flex flex-col text-black"><div className="flex items-center justify-between border-b border-black/5 py-3 px-5 bg-white/20 shrink-0 text-black"><div className="flex items-center gap-2 text-black"><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><div className="w-2.5 h-2.5 rounded-full bg-black/10 text-black" /><span className="ml-3 text-black/30 uppercase tracking-[0.2em] text-[9px] font-bold text-black">System Parser Feed</span></div><div className="text-[9px] font-bold text-black/20 uppercase tracking-widest text-black">Live Output</div></div><div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide p-4 text-black">{scannedFilesLog.map((log, idx) => (<div key={`${idx}-${log}`} className="flex gap-4 leading-tight text-[11px] md:text-[12px] font-medium text-black"><span className="text-black/20 shrink-0 tabular-nums text-black">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span><span className={cn("shrink-0 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold tracking-wider text-black", scanningPhase === 'Indexing' ? "bg-green-500/10 text-green-600/70" : "bg-blue-500/10 text-blue-600/70")}>{scanningPhase === 'Indexing' ? 'IDX' : 'PARSE'}</span><span className="truncate text-black/60 text-black">{log}</span></div>))}{scannedFilesLog.length === 0 && <div className="animate-pulse text-black/20 font-mono text-center mt-20 italic text-black">Initializing scanner context...</div>}</div></div>
             </div>
           </div>
         ) : (
