@@ -6,16 +6,20 @@
 
 ### Key Technical Features
 - **Permalinks:** Full synchronization between application state and URL query parameters (`?a=`, `?t=`, `?p=`). Supports deep-linking to archives, tabs, and specific posts. URL parameters are automatically cleaned when navigating back to the archive explorer.
-- **Persistent Caching:** Uses `idb-keyval` (IndexedDB) to cache parsed metadata. Subsequent loads of the same archive are near-instant. The cache schema includes `profileMetadata` with consolidated user info and profile picture history.
-- **Modular Scanning Logic:** High-performance archive scanning encapsulated in the `useArchiveScanner` hook. It handles multi-format detection (Instagram Export, Instaloader, JSON), batch processing, and yields to the main thread to prevent UI freezing.
+- **Persistent Caching:** Uses `idb-keyval` (IndexedDB) to cache parsed metadata. Subsequent loads are near-instant.
+  - **Metadata:** Caches profile info and post lists for both remote AND local archives.
+  - **Thumbnails:** High-res images (>1MiB) and videos have thumbnails generated and cached in IndexedDB with the `thumb_` prefix.
+- **Background Media Processing:**
+  - **High-Res Images:** A dedicated Web Worker (`thumbnail-worker.ts`) handles image resizing using `OffscreenCanvas` and `createImageBitmap` to prevent main-thread jank.
+  - **Serial Queue:** A memory-safe queue ensures only one high-res image is decoded at a time, preventing Out-of-Memory (OOM) crashes on 50MP+ files.
 - **High-Performance Carousel:** Advanced `PostModal` with:
-  - **Preloading:** Intelligently preloads the first two slides immediately, followed by a background preload of the entire carousel.
-  - **Seamless Transitions:** Zero-latency slide transitions with optimized Framer Motion variants, removing "black flashes" between images.
-  - **Async Decoding:** Utilizes `decoding="async"` to offload image processing from the main thread.
-- **Glassy Scanner UI:** Custom-built glassmorphism scanning dashboard with throttled (1s) dynamic blurred backgrounds and a high-density system log.
-- **PWA Auto-Updates:** Configured with `autoUpdate` behavior and a periodic (hourly) update check to ensure long-running sessions and installed PWAs always have the latest code.
-- **Compressed Metadata:** Support for `.json.xz` file decompression using `xz-decompress` (WASM-powered).
-- **Production-Ready Docker:** Multi-stage Docker builds using `node:slim` serving both the Express API and the Vite-built frontend.
+  - **Inter-Post Preloading:** Preloads the first media of adjacent posts for instant navigation.
+  - **Intra-Carousel Preloading:** Intelligently preloads the current carousel's slides.
+  - **Seamless Transitions:** Zero-latency slide transitions without "black flashes" between images.
+- **Glassy Scanner UI:** Custom-built glassmorphism scanning dashboard with double-buffering logic to ensure smooth, flicker-free background crossfades during file indexing.
+- **PWA Capabilities:** 
+  - **Auto-Updates:** Hourly periodic update checks.
+  - **Navigation Fix:** `navigateFallbackDenylist` allows direct server access to `/archives/` and `/api/` (enabling "Open in new tab" for original files).
 
 ### Main Technologies
 - **Frontend:** React 19, Vite 6, TypeScript
@@ -23,14 +27,14 @@
 - **Icons:** Lucide React
 - **Animations:** Framer Motion (`motion/react`)
 - **Persistence:** IndexedDB (`idb-keyval`)
-- **Backend:** Express, tsx (for server-side scanning)
-- **Decompression:** xz-decompress (WASM)
+- **Backend:** Express, tsx
+- **Workers:** Web Workers for background image processing.
 
 ## Architecture
 
 ### State Management
-- **`useArchiveScanner` Hook:** Centralized logic for parsing archives and managing results (`allPosts`, `allStories`, `profileMetadata`).
-- **Archive Interface:** Unified `ArchiveFile` interface implemented by `LocalArchiveFile` (for browser `File` objects) and `RemoteArchiveFile` (for server-side assets).
+- **`useArchiveScanner` Hook:** Centralized logic for parsing and caching. It handles folder-name-to-username detection and "Smart Fallback" profile pictures (using the oldest image if no profile pic is found).
+- **`useThumbnailQueue` Hook:** Manages the serial processing of high-resolution media.
 
 ### Cache Schema
 ```typescript
@@ -38,8 +42,8 @@ interface CacheData {
   name: string;
   isLocal: boolean;
   fileCount: number;
-  posts: Post[];      // Remote archives only (Local archives re-parsed for security)
-  stories: Post[];    // Remote archives only
+  posts: Post[];      // Cached for all archive types
+  stories: Post[];
   profileMetadata: {
     username: string;
     fullName: string;
@@ -55,15 +59,11 @@ interface CacheData {
 ```
 
 ## Commands
-- `npm install`: Install project dependencies.
-- `npm run dev`: Start the local development server on port 3000.
-- `npm run build`: Generate the production-ready build in the `dist` folder and server in `dist-server`.
-- `npm run server`: Start the backend server to scan `./_sample-archives`.
+- `npm install`: Install dependencies.
+- `npm run dev`: Start dev server (Port 3000).
+- `npm run build`: Build frontend (`dist/`) and server (`dist-server/`).
+- `npm run server`: Start production-ready backend.
 - `npm run lint`: Execute TypeScript type-checking.
 
 ## Production Deployment
-The project is containerized and available on GHCR. It expects a volume mount at `/archives` containing subdirectories for each user.
-
-### Key Environment Variables
-- `PORT`: Server port (default: 3000)
-- `ARCHIVES_DIR`: Path to the archives collection (default: /archives)
+The project is containerized. It expects a volume mount at `/archives` containing subdirectories for each user.

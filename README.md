@@ -4,14 +4,16 @@ A high-performance React PWA for browsing archived Instagram data with a native-
 
 ## Features
 
-- **Advanced Carousel**: Seamless, zero-latency transitions between slides with intelligent preloading. Images use asynchronous decoding to keep the UI smooth during motion.
-- **Persistent Caching**: Uses IndexedDB to store parsed archives locally. Subsequent loads are near-instant, with full support for profile metadata and profile picture history.
+- **Advanced Carousel**: Seamless, zero-latency transitions between slides with intelligent preloading. Navigating between different posts is now near-instant thanks to inter-post background preloading.
+- **High-Res Performance**: Handles 50MP+ images effortlessly using a background Web Worker and a memory-safe serial processing queue.
+- **Persistent Local Caching**: Uses IndexedDB to store parsed archives and generated thumbnails. **Local folders** now load instantly from cache on return visits without needing to re-upload files.
 - **Permalinks**: State is synchronized with the URL, allowing you to share direct links to archives, tabs, or specific posts. Navigating back to the explorer cleans up URL parameters automatically.
-- **Glassy Scanning UI**: A modern, translucent white terminal experience with a dynamic blurred background generated from your media during scanning.
+- **Glassy Scanning UI**: A refined, translucent white terminal experience with flicker-free, double-buffered dynamic blurred backgrounds.
 - **PWA with Auto-Update**: Fully offline-capable and installable. Clients automatically receive updates when a new version is deployed to the server.
 - **Local Privacy**: All processing is done client-side. Even when using the self-hosted version, your media is processed locally in your browser and never uploaded.
-- **Story Viewer**: Native-like story experience with segmented progress bars, auto-playback, and audio controls.
+- **Smart Fallbacks**: Automatically detects usernames from folder names and uses the oldest archive image as a profile picture if one is missing.
 - **Customizable Grid**: 1:1 or 3:4 aspect ratios with adjustable "bumps" for aesthetic alignment.
+- **Story Viewer**: Native-like story experience with segmented progress bars, auto-playback, and audio controls.
 - **Navigation Protection**: Intercepts accidental browser "Back" or "Refresh" actions to protect your current session.
 
 ## Deployment
