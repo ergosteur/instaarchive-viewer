@@ -5,16 +5,20 @@
 **InstaArchive** is a high-performance, React-based Progressive Web App (PWA) designed to browse and explore archived Instagram data with a native-feeling interface. It supports both local directory loading and self-hosted server modes.
 
 ### Key Technical Features
-- **Permalinks:** Full synchronization between application state and URL query parameters (`?a=`, `?t=`, `?p=`). Supports deep-linking to archives, tabs, and specific posts.
-- **Persistent Caching:** Uses `idb-keyval` (IndexedDB) to cache parsed metadata and server-side media URLs. Subsequent loads of the same archive are instant.
-- **Glassy Scanner UI:** A custom-built glassmorphism scanning dashboard with throttled (1s) dynamic blurred backgrounds and a high-density system log.
-- **Support for Multiple Formats:** Recognizes official Instagram export structures and Instaloader regex-based naming conventions.
+- **Permalinks:** Full synchronization between application state and URL query parameters (`?a=`, `?t=`, `?p=`). Supports deep-linking to archives, tabs, and specific posts. URL parameters are automatically cleaned when navigating back to the archive explorer.
+- **Persistent Caching:** Uses `idb-keyval` (IndexedDB) to cache parsed metadata. Subsequent loads of the same archive are near-instant. The cache schema includes `profileMetadata` with consolidated user info and profile picture history.
+- **Modular Scanning Logic:** High-performance archive scanning encapsulated in the `useArchiveScanner` hook. It handles multi-format detection (Instagram Export, Instaloader, JSON), batch processing, and yields to the main thread to prevent UI freezing.
+- **High-Performance Carousel:** Advanced `PostModal` with:
+  - **Preloading:** Intelligently preloads the first two slides immediately, followed by a background preload of the entire carousel.
+  - **Seamless Transitions:** Zero-latency slide transitions with optimized Framer Motion variants, removing "black flashes" between images.
+  - **Async Decoding:** Utilizes `decoding="async"` to offload image processing from the main thread.
+- **Glassy Scanner UI:** Custom-built glassmorphism scanning dashboard with throttled (1s) dynamic blurred backgrounds and a high-density system log.
+- **PWA Auto-Updates:** Configured with `autoUpdate` behavior and a periodic (hourly) update check to ensure long-running sessions and installed PWAs always have the latest code.
 - **Compressed Metadata:** Support for `.json.xz` file decompression using `xz-decompress` (WASM-powered).
-- **Navigation Protection:** Intercepts browser history (`popstate`) and exit events (`beforeunload`) to prevent session loss while maintaining a "Back to Explorer" SPA flow.
-- **Production-Ready Docker:** Multi-stage Docker builds using `node:slim` to serve both the Express API and the Vite-built frontend.
+- **Production-Ready Docker:** Multi-stage Docker builds using `node:slim` serving both the Express API and the Vite-built frontend.
 
 ### Main Technologies
-- **Frontend:** React 19, Vite, TypeScript
+- **Frontend:** React 19, Vite 6, TypeScript
 - **Styling:** Tailwind CSS (v4)
 - **Icons:** Lucide React
 - **Animations:** Framer Motion (`motion/react`)
@@ -22,22 +26,40 @@
 - **Backend:** Express, tsx (for server-side scanning)
 - **Decompression:** xz-decompress (WASM)
 
-## Known Issues
-- **Generic Collection Parser:** Currently unreliable for non-Instagram archive structures (e.g., folders with arbitrary media filenames). It may fail to correctly identify or group posts in some environments.
+## Architecture
+
+### State Management
+- **`useArchiveScanner` Hook:** Centralized logic for parsing archives and managing results (`allPosts`, `allStories`, `profileMetadata`).
+- **Archive Interface:** Unified `ArchiveFile` interface implemented by `LocalArchiveFile` (for browser `File` objects) and `RemoteArchiveFile` (for server-side assets).
+
+### Cache Schema
+```typescript
+interface CacheData {
+  name: string;
+  isLocal: boolean;
+  fileCount: number;
+  posts: Post[];      // Remote archives only (Local archives re-parsed for security)
+  stories: Post[];    // Remote archives only
+  profileMetadata: {
+    username: string;
+    fullName: string;
+    bio: string;
+    followerCount: number;
+    followingCount: number;
+    externalUrl: string;
+    profilePic: string | null;
+    allProfilePics: string[];
+  };
+  timestamp: number;
+}
+```
 
 ## Commands
 - `npm install`: Install project dependencies.
 - `npm run dev`: Start the local development server on port 3000.
-- `npm run build`: Generate the production-ready build in the `dist` folder.
+- `npm run build`: Generate the production-ready build in the `dist` folder and server in `dist-server`.
 - `npm run server`: Start the backend server to scan `./_sample-archives`.
 - `npm run lint`: Execute TypeScript type-checking.
-
-## Troubleshooting Cache (PWA)
-Since the app is a PWA, the browser may cache old JavaScript bundles. If new features don't appear:
-1. Open DevTools -> Application -> Service Workers.
-2. Click **Unregister** for the localhost service worker.
-3. Go to **Storage** and click **Clear site data**.
-4. Perform a Hard Refresh (`Ctrl + Shift + R`).
 
 ## Production Deployment
 The project is containerized and available on GHCR. It expects a volume mount at `/archives` containing subdirectories for each user.
@@ -45,8 +67,3 @@ The project is containerized and available on GHCR. It expects a volume mount at
 ### Key Environment Variables
 - `PORT`: Server port (default: 3000)
 - `ARCHIVES_DIR`: Path to the archives collection (default: /archives)
-
-## Development Conventions
-- **Username Logic:** The directory name is the definitive source of truth for the account username.
-- **State Management:** React `useState`, `useMemo`, and `useCallback` for optimized performance.
-- **File Handling:** Uses `RemoteArchiveFile` and `LocalArchiveFile` classes to provide a unified `ArchiveFile` interface for the parser.

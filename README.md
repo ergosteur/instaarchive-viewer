@@ -4,11 +4,12 @@ A high-performance React PWA for browsing archived Instagram data with a native-
 
 ## Features
 
-- **Persistent Caching**: Uses IndexedDB to store parsed archives locally. Subsequent loads are near-instant.
-- **Permalinks**: State is synchronized with the URL, allowing you to share direct links to archives, tabs, or specific posts.
-- **Glassy Scanning UI**: A modern, translucent white terminal experience with a dynamic blurred background of your media.
-- **Local Privacy**: All processing is done client-side. Even when using the self-hosted version, your media is processed locally in your browser.
-- **Multiple Formats**: Supports official Instagram JSON exports and Instaloader regex-based naming conventions.
+- **Advanced Carousel**: Seamless, zero-latency transitions between slides with intelligent preloading. Images use asynchronous decoding to keep the UI smooth during motion.
+- **Persistent Caching**: Uses IndexedDB to store parsed archives locally. Subsequent loads are near-instant, with full support for profile metadata and profile picture history.
+- **Permalinks**: State is synchronized with the URL, allowing you to share direct links to archives, tabs, or specific posts. Navigating back to the explorer cleans up URL parameters automatically.
+- **Glassy Scanning UI**: A modern, translucent white terminal experience with a dynamic blurred background generated from your media during scanning.
+- **PWA with Auto-Update**: Fully offline-capable and installable. Clients automatically receive updates when a new version is deployed to the server.
+- **Local Privacy**: All processing is done client-side. Even when using the self-hosted version, your media is processed locally in your browser and never uploaded.
 - **Story Viewer**: Native-like story experience with segmented progress bars, auto-playback, and audio controls.
 - **Customizable Grid**: 1:1 or 3:4 aspect ratios with adjustable "bumps" for aesthetic alignment.
 - **Navigation Protection**: Intercepts accidental browser "Back" or "Refresh" actions to protect your current session.
@@ -78,5 +79,6 @@ archives/
 **Prerequisites:** Node.js (LTS recommended)
 
 1. **Install dependencies:** `npm install`
-2. **Start dev server:** `npm run dev`
-3. **Start local backend:** `npm run server` (Optional, serves `./_sample-archives`)
+2. **Start dev server:** `npm run dev` (Frontend on port 3000)
+3. **Start local backend:** `npm run server` (Optional, serves `./_sample-archives` on port 3001)
+4. **Build production:** `npm run build` (Generates `./dist` for frontend and `./dist-server` for the API)
