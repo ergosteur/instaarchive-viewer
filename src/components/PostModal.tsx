@@ -17,6 +17,8 @@ import { MediaRenderer } from './MediaRenderer';
 
 interface PostModalProps {
   post: Post;
+  nextPost?: Post;
+  prevPost?: Post;
   onClose: () => void;
   onNextPost?: () => void;
   onPrevPost?: () => void;
@@ -26,7 +28,7 @@ interface PostModalProps {
 }
 
 export const PostModal: React.FC<PostModalProps> = ({ 
-  post, onClose, onNextPost, onPrevPost, hasNextPost, hasPrevPost, profilePic
+  post, nextPost, prevPost, onClose, onNextPost, onPrevPost, hasNextPost, hasPrevPost, profilePic
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
@@ -34,32 +36,34 @@ export const PostModal: React.FC<PostModalProps> = ({
   // Preloading Logic
   useEffect(() => {
     const controller = new AbortController();
-    const preloadMedia = async (index: number) => {
-      if (index < 0 || index >= post.media.length) return;
-      const media = post.media[index];
-      if (!media.url) return;
-      
+    
+    const preloadMedia = async (url: string, type: 'image' | 'video') => {
+      if (!url) return;
       try {
-        if (media.type === 'image') {
+        if (type === 'image') {
           const img = new Image();
-          img.src = media.url;
+          img.src = url;
         } else {
           const video = document.createElement('video');
-          video.src = media.url;
+          video.src = url;
           video.preload = 'auto';
         }
       } catch (e) {}
     };
 
-    // 1. Immediate preload of first two slides
-    preloadMedia(0);
-    preloadMedia(1);
+    // 1. Current post: Immediate preload of first two slides
+    if (post.media[0]) preloadMedia(post.media[0].url, post.media[0].type);
+    if (post.media[1]) preloadMedia(post.media[1].url, post.media[1].type);
 
-    // 2. Delayed preload of the rest to stay out of the way of initial render
+    // 2. Next/Prev posts: Preload their first slides
+    if (nextPost?.media[0]) preloadMedia(nextPost.media[0].url, nextPost.media[0].type);
+    if (prevPost?.media[0]) preloadMedia(prevPost.media[0].url, prevPost.media[0].type);
+
+    // 3. Current post: Delayed preload of the rest
     const timeout = setTimeout(() => {
       for (let i = 2; i < post.media.length; i++) {
         if (controller.signal.aborted) break;
-        preloadMedia(i);
+        preloadMedia(post.media[i].url, post.media[i].type);
       }
     }, 1000);
 
@@ -67,7 +71,7 @@ export const PostModal: React.FC<PostModalProps> = ({
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [post.id, post.media]);
+  }, [post.id, post.media, nextPost?.id, prevPost?.id]);
 
   useEffect(() => setCurrentIndex(0), [post.id]);
   useEffect(() => {
