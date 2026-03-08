@@ -142,7 +142,7 @@ const ArchiveDashboard = ({
         <button 
           onClick={onLocalSelect}
           disabled={isScanning}
-          className="aspect-[3/4] rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all flex flex-col items-center justify-center gap-4 group disabled:opacity-50"
+          className="aspect-[3/4] rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all flex flex-col items-center justify-center gap-4 group disabled:opacity-50 text-black"
         >
           <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center text-gray-400 group-hover:text-blue-500 transition-colors shadow-inner">
             <FolderOpen size={24} />
@@ -212,7 +212,7 @@ const ArchiveDashboard = ({
               disabled={isScanning}
               className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-white shadow-sm border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all flex flex-col text-left disabled:opacity-50"
             >
-              <div className="flex-1 bg-gray-100 overflow-hidden relative">
+              <div className="flex-1 bg-gray-100 overflow-hidden relative text-black">
                 {archive.profileMetadata.profilePic ? (
                   <img src={archive.profileMetadata.profilePic} alt="" className="w-full h-full object-cover" />
                 ) : (
@@ -227,7 +227,7 @@ const ArchiveDashboard = ({
                   Local Cache
                 </div>
               </div>
-              <div className="p-4 space-y-1">
+              <div className="p-4 space-y-1 text-black">
                 <span className="font-bold text-sm block truncate uppercase tracking-tight text-black/80">{archive.name}</span>
                 <span className="text-[10px] text-gray-400 uppercase tracking-widest">{archive.fileCount} indexed</span>
               </div>
@@ -324,7 +324,7 @@ const StoryViewer = ({
       className="fixed inset-0 z-[100] bg-[#1a1a1a] flex items-center justify-center overflow-hidden text-white"
       onClick={onClose}
     >
-      <div className="absolute inset-0 z-0">
+      <div className="absolute inset-0 z-0 text-white">
         <img 
           src={story.media[0].url} 
           alt="" 
@@ -350,17 +350,17 @@ const StoryViewer = ({
       </button>
 
       <div 
-        className="relative w-full h-full md:h-[90vh] md:max-w-[45vh] bg-black overflow-hidden md:rounded-lg shadow-2xl z-10"
+        className="relative w-full h-full md:h-[90vh] md:max-w-[45vh] bg-black overflow-hidden md:rounded-lg shadow-2xl z-10 text-white"
         onClick={e => e.stopPropagation()}
       >
         <div 
-          className="absolute top-2 left-2 right-2 z-50 flex px-1"
+          className="absolute top-2 left-2 right-2 z-50 flex px-1 text-white"
           style={{ gap: stories.length > 100 ? '1px' : (stories.length > 50 ? '2px' : '4px') }}
         >
           {stories.map((_, i) => (
-            <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
+            <div key={i} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden text-white">
               <div 
-                className="h-full bg-white transition-all duration-75"
+                className="h-full bg-white transition-all duration-75 text-white"
                 style={{ 
                   width: i < currentStoryIndex ? '100%' : (i === currentStoryIndex ? `${progress}%` : '0%') 
                 }}
@@ -374,28 +374,28 @@ const StoryViewer = ({
             <div className="w-8 h-8 rounded-full bg-white/10 p-0.5">
               <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                 {profilePic ? (
-                  <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={profilePic} alt="" className="w-full h-full object-cover text-black" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="text-[10px] font-bold text-black uppercase">{story.username[0]}</span>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-white">
               <span className="text-xs font-semibold">{story.username}</span>
               <span className="text-[10px] opacity-60 font-medium">{format(parseISO(story.date), 'MMM d')}</span>
             </div>
           </div>
           
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 text-white">
             {story.media[0].type === 'video' && (
               <button 
                 onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white"
               >
                 {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
               </button>
             )}
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
               <X size={24} />
             </button>
           </div>
@@ -486,7 +486,7 @@ const VideoThumbnail = ({ url, className }: { url: string; className?: string })
   }, [url, thumbnail, isInView]);
 
   if (!thumbnail) return (
-    <div ref={containerRef} className={cn("w-full h-full bg-gray-100 flex items-center justify-center", className)}>
+    <div ref={containerRef} className={cn("w-full h-full bg-gray-100 flex items-center justify-center text-black", className)}>
       <Play size={20} className="text-gray-300" fill="currentColor" />
     </div>
   );
@@ -499,7 +499,7 @@ const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; class
   const sizingClass = isFullView ? "w-full h-auto block" : "w-full h-full object-cover";
   const mediaStyle = { transform: 'translateZ(0)' };
 
-  if (!file.url) return <div className={cn("bg-gray-100 flex items-center justify-center", sizingClass)}><Play size={24} className="text-gray-300" /></div>;
+  if (!file.url) return <div className={cn("bg-gray-100 flex items-center justify-center text-black", sizingClass)}><Play size={24} className="text-gray-300" /></div>;
 
   if (file.type === 'video') {
     return (
@@ -579,7 +579,7 @@ const PostModal = ({
             </div>
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 min-h-0 md:max-h-[60vh] text-black">
               <div className="flex gap-3 text-black">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div>
+                <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover text-black" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div>
                 <div className="text-sm text-black"><span className="font-semibold mr-2 text-black">{post.username}</span><span className="whitespace-pre-wrap text-black">{post.caption}</span><div className="mt-2 text-xs text-gray-500 uppercase tracking-tight text-black">{format(parseISO(post.date), 'MMMM d, yyyy')}</div></div>
               </div>
             </div>
@@ -646,110 +646,6 @@ export default function App() {
   const clearCache = async (name: string) => { await idb.del(name); await refreshCachedArchives(); };
   const resetProfileState = useCallback(() => { setUsername(''); setFullName(''); setBio(''); setFollowerCount(0); setFollowingCount(0); setExternalUrl(''); setProfilePic(null); setAllProfilePics([]); }, []);
 
-  useEffect(() => {
-    fetch('/api/archives').then(res => res.json()).then(data => { if (Array.isArray(data) && data.length > 0) { setServerArchives(data); setIsServerMode(true); } }).catch(() => setIsServerMode(false));
-    refreshCachedArchives();
-  }, [refreshCachedArchives]);
-
-  // --- Permalink Synchronization ---
-
-  // Update URL based on state
-  useEffect(() => {
-    console.log('[Permalink] State changed:', { 
-      currentArchive: currentArchive?.name, 
-      username, 
-      posts: allPosts.length, 
-      activeTab, 
-      selectedPost: selectedPost?.id 
-    });
-
-    const params = new URLSearchParams();
-    if (currentArchive) params.set('a', currentArchive.name);
-    else if (allPosts.length > 0 && username) params.set('a', username); // Handle local archives too
-    
-    if (activeTab !== 'posts') params.set('t', activeTab);
-    if (selectedPost) params.set('p', selectedPost.id);
-
-    const newSearch = params.toString();
-    const currentSearch = new URLSearchParams(window.location.search).toString();
-    
-    if (newSearch !== currentSearch) {
-      console.log(`[Permalink] Updating URL to: ?${newSearch}`);
-      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
-      window.history.replaceState(null, '', newUrl);
-    }
-  }, [currentArchive?.name, username, allPosts.length, activeTab, selectedPost?.id]);
-
-  // Read state from URL on mount/initialization
-  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
-  useEffect(() => {
-    if (hasInitialLoaded || serverArchives.length === 0) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const archiveName = params.get('a');
-    const tab = params.get('t');
-    const postId = params.get('p');
-
-    console.log('[Permalink] Initial read from URL:', { archiveName, tab, postId });
-
-    if (archiveName) {
-      const archive = serverArchives.find(a => a.name === archiveName);
-      if (archive) {
-        console.log(`[Permalink] Auto-loading archive: ${archiveName}`);
-        loadServerArchive(archive);
-        if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
-          setActiveTab(tab as any);
-        }
-      }
-    }
-    setHasInitialLoaded(true);
-  }, [serverArchives, hasInitialLoaded]);
-
-  // Auto-open post if postId is in URL and posts are loaded
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const postId = params.get('p');
-    if (postId && allPosts.length > 0 && !selectedPost) {
-      const post = allPosts.find(p => p.id === postId);
-      if (post) setSelectedPost(post);
-    }
-  }, [allPosts, selectedPost]);
-
-  // Intercept back button and page exit
-  useEffect(() => {
-    const hasData = allPosts.length > 0;
-    
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasData) {
-        const message = 'Are you sure you want to leave? Your current archive session will be cleared.';
-        e.preventDefault();
-        e.returnValue = message;
-        return message;
-      }
-    };
-
-    const handlePopState = (e: PopStateEvent) => {
-      if (allPosts.length > 0) {
-        setAllPosts([]);
-        setAllStories([]);
-        setCurrentArchive(null);
-        resetProfileState();
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState);
-
-    if (hasData) {
-      window.history.pushState({ inApp: true }, '');
-    }
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [allPosts.length, resetProfileState]);
-
   const filteredPosts = useMemo(() => {
     if (activeTab === 'reels') return allPosts.filter(p => p.media.length === 1 && p.media[0].type === 'video');
     if (activeTab === 'posts') return allPosts.filter(p => !(p.media.length === 1 && p.media[0].type === 'video'));
@@ -769,7 +665,7 @@ export default function App() {
 
   const cycleProfilePic = () => { if (allProfilePics.length > 1) { const idx = allProfilePics.indexOf(profilePic || ''); setProfilePic(allProfilePics[(idx + 1) % allProfilePics.length]); } };
 
-  const handleFiles = async (files: ArchiveFile[], archiveContext?: ServerArchive) => {
+  const handleFiles = useCallback(async (files: ArchiveFile[], archiveContext?: ServerArchive) => {
     if (!files || files.length === 0) return;
     setIsScanning(true); resetProfileState(); setScanningPhase('Indexing'); setScannedCount(0); setTotalFiles(files.length); setScannedFilesLog([]); setGridOffset(0);
     console.log(`[Scanner] Starting scan of ${files.length} files...`);
@@ -822,6 +718,7 @@ export default function App() {
       let format: 'export' | 'instaloader' | 'json' | 'unknown' = 'unknown';
       let jsonFiles: ArchiveFile[] = [];
 
+      // Pass 1: Indexing
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (i % 50 === 0 || i === files.length - 1) {
@@ -854,6 +751,7 @@ export default function App() {
 
       console.log(`[Scanner] Format Detection Complete. Result: ${format}. Media indexed: ${mediaFilesMap.size}`);
 
+      // Pass 2: JSON Parsing
       if (jsonFiles.length > 0 && (format === 'json' || format === 'instaloader')) {
         setScanningPhase('Parsing');
         for (let i = 0; i < jsonFiles.length; i++) {
@@ -911,6 +809,7 @@ export default function App() {
         }
       } 
       
+      // Pass 3: Regex Parsing
       if (format === 'export' || format === 'instaloader') {
         setScanningPhase('Parsing');
         const CHUNK_SIZE = 100;
@@ -963,6 +862,7 @@ export default function App() {
         }
       }
 
+      // Pass 4: Generic Fallback
       if (postsMap.size === 0) {
         console.log(`[Scanner] No posts found with standard patterns. Using mediaFilesMap: ${mediaFilesMap.size}`);
         setScanningPhase('Parsing');
@@ -1058,10 +958,10 @@ export default function App() {
           await refreshCachedArchives();
         } catch (e) { console.error(`[Cache] Save error:`, e); }
       }
-    } catch (err) { console.error(`[Scanner] Critical error:`, err); } finally { setIsScanning(false); }
-  };
+    } catch (err) { console.error(`[Scanner] Critical error during scan:`, err); } finally { setIsScanning(false); }
+  }, [currentArchive, resetProfileState, refreshCachedArchives, setCurrentScanningImage, setBio, setExternalUrl, setFollowerCount, setFollowingCount, setFullName, setProfilePic, setUsername]);
 
-  const loadServerArchive = async (archive: ServerArchive) => {
+  const loadServerArchive = useCallback(async (archive: ServerArchive) => {
     console.log(`[Cache] Attempting to load archive: ${archive.name}`);
     setIsScanning(true);
     setCurrentArchive(archive);
@@ -1110,11 +1010,56 @@ export default function App() {
       console.error('[Scanner] Failed to load server archive:', err);
       setIsScanning(false);
     }
-  };
+  }, [handleFiles]);
 
   const handleLocalFiles = (files: FileList | null) => { if (!files) return; const archiveFiles = Array.from(files).map(f => new LocalArchiveFile(f)); handleFiles(archiveFiles); };
   const triggerFileSelect = () => fileInputRef.current?.click();
   const loadMore = () => setVisiblePostsCount(prev => prev + 90);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (currentArchive) params.set('a', currentArchive.name);
+    else if (allPosts.length > 0 && username) params.set('a', username);
+    if (activeTab !== 'posts') params.set('t', activeTab);
+    if (selectedPost) params.set('p', selectedPost.id);
+    const newSearch = params.toString();
+    const currentSearch = new URLSearchParams(window.location.search).toString();
+    if (newSearch !== currentSearch) {
+      console.log(`[Permalink] Updating URL to: ?${newSearch}`);
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      window.history.replaceState(null, '', newUrl);
+    }
+  }, [currentArchive?.name, username, allPosts.length, activeTab, selectedPost?.id]);
+
+  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+  useEffect(() => {
+    if (hasInitialLoaded || serverArchives.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const archiveName = params.get('a');
+    const tab = params.get('t');
+    const postId = params.get('p');
+    console.log('[Permalink] Initial read from URL:', { archiveName, tab, postId });
+    if (archiveName) {
+      const archive = serverArchives.find(a => a.name === archiveName);
+      if (archive) {
+        console.log(`[Permalink] Auto-loading archive: ${archiveName}`);
+        loadServerArchive(archive);
+        if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
+          setActiveTab(tab as any);
+        }
+      }
+    }
+    setHasInitialLoaded(true);
+  }, [serverArchives, hasInitialLoaded, loadServerArchive]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const postId = params.get('p');
+    if (postId && allPosts.length > 0 && !selectedPost) {
+      const post = allPosts.find(p => p.id === postId);
+      if (post) setSelectedPost(post);
+    }
+  }, [allPosts, selectedPost]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
@@ -1152,7 +1097,7 @@ export default function App() {
               isScanning={isScanning} 
             />
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6 text-black">
               <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400"><Grid3X3 size={48} strokeWidth={1} /></div>
               <div className="space-y-2"><h2 className="text-2xl font-semibold text-black/80">No Archive Selected</h2><p className="text-gray-500 max-md text-sm md:text-base">Select a local archive folder to start browsing. Your files are processed locally in the browser and never uploaded.</p></div>
               <button onClick={triggerFileSelect} disabled={isScanning} className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2">{isScanning ? <><Loader2 className="animate-spin" size={20} /><span className="animate-dots">Scanning</span></> : 'Select Local Archive Folder'}</button>
