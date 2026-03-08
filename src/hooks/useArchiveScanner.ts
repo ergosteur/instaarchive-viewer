@@ -91,6 +91,7 @@ export const useArchiveScanner = (
       const postsMap = new Map<string, Partial<Post>>();
       const mediaFilesMap = new Map<string, ArchiveFile>();
       const discoveredProfilePics: { name: string, url: string }[] = [];
+      const allImageFiles: ArchiveFile[] = [];
       
       let localFullName = '';
       let localBio = '';
@@ -107,7 +108,17 @@ export const useArchiveScanner = (
         return (obj.is_story === true || obj.is_reel_media === true || typeName.includes('Story') || obj.audience === "MediaAudience.DEFAULT" || obj.node_type === "StoryItem" || obj.product_type === "story" || typeName === "GraphStoryVideo" || typeName === "GraphStoryImage");
       };
 
-      let currentUsername = archiveContext?.name || currentArchive?.name || detectedUsername || '';
+      let currentUsername = archiveContext?.name || currentArchive?.name || detectedUsername;
+      
+      // If still no username (likely local folder), try to extract from path
+      if (!currentUsername && files[0]?.webkitRelativePath) {
+        const pathParts = files[0].webkitRelativePath.split(/[/\\]/);
+        if (pathParts.length > 1) {
+          currentUsername = pathParts[0];
+        }
+      }
+      
+      if (!currentUsername) currentUsername = 'archived_user';
 
       let format: 'export' | 'instaloader' | 'json' | 'unknown' = 'unknown';
       let jsonFiles: ArchiveFile[] = [];
@@ -145,6 +156,7 @@ export const useArchiveScanner = (
 
         if (isMedia(file.name)) {
           mediaFilesMap.set(file.webkitRelativePath || file.name, file);
+          if (isImage(file.name)) allImageFiles.push(file);
         }
       }
 
@@ -310,6 +322,15 @@ export const useArchiveScanner = (
         const urls = discoveredProfilePics.map(p => p.url);
         localProfilePic = urls[0];
         setProfileMetadata(prev => ({ ...prev, profilePic: localProfilePic, allProfilePics: urls }));
+      } else if (allImageFiles.length > 0) {
+        // Fallback: Use oldest image in archive as profile pic
+        allImageFiles.sort((a, b) => a.name.localeCompare(b.name));
+        const oldestFile = allImageFiles[0];
+        try {
+          const url = oldestFile.url || URL.createObjectURL(new Blob([await oldestFile.arrayBuffer()], { type: 'image/jpeg' }));
+          localProfilePic = url;
+          setProfileMetadata(prev => ({ ...prev, profilePic: localProfilePic, allProfilePics: [url] }));
+        } catch(e) {}
       }
 
       const finalUsername = currentUsername || 'archived_user';
@@ -358,7 +379,8 @@ export const useArchiveScanner = (
 
         const cacheData = { 
           name: cacheKey, isLocal, fileCount: archiveToCache ? archiveToCache.fileCount : files.length, 
-          posts: isLocal ? [] : posts, stories: isLocal ? [] : stories,
+          posts: posts, // Enable caching for local archives
+          stories: stories,
           profileMetadata: { 
             username: finalUsername, 
             fullName: localFullName, 

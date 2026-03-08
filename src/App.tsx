@@ -192,6 +192,37 @@ export default function App() {
     }
   }, [handleFiles, setAllPosts, setAllStories, setProfileMetadata, setIsScanning, setScanningPhase]);
 
+  const loadLocalCachedArchive = useCallback(async (archive: any) => {
+    console.log(`[Cache] Loading local archive from cache: ${archive.name}`);
+    setIsScanning(true);
+    setCurrentArchive(null);
+    setScanningPhase('Checking Cache');
+    
+    try {
+      // Small delay for UI transition
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      setAllPosts(archive.posts || []);
+      setAllStories(archive.stories || []);
+      
+      const profileMetadata = { ...archive.profileMetadata };
+      if (!profileMetadata.allProfilePics && archive.allProfilePics) {
+        profileMetadata.allProfilePics = archive.allProfilePics;
+      }
+      if (!profileMetadata.allProfilePics) {
+        profileMetadata.allProfilePics = profileMetadata.profilePic ? [profileMetadata.profilePic] : [];
+      }
+      
+      setProfileMetadata(profileMetadata);
+      setVisiblePostsCount(90);
+      setIsScanning(false);
+      console.log(`[Cache] Local archive ${archive.name} restored from cache.`);
+    } catch (err) {
+      console.error('[Cache] Failed to restore local archive:', err);
+      setIsScanning(false);
+    }
+  }, [setAllPosts, setAllStories, setProfileMetadata, setIsScanning, setScanningPhase]);
+
   const handleLocalFiles = (files: FileList | null) => { if (!files) return; const archiveFiles = Array.from(files).map(f => new LocalArchiveFile(f)); handleFiles(archiveFiles); };
   const triggerFileSelect = () => fileInputRef.current?.click();
   const loadMore = () => setVisiblePostsCount(prev => prev + 90);
@@ -279,6 +310,7 @@ export default function App() {
               cachedArchives={cachedArchives} 
               onSelect={loadServerArchive} 
               onLocalSelect={triggerFileSelect} 
+              onLocalCacheSelect={loadLocalCachedArchive}
               onClearCache={clearCache} 
               isScanning={isScanning} 
             />

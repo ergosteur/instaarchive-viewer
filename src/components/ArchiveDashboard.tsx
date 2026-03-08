@@ -14,6 +14,7 @@ interface ArchiveDashboardProps {
   cachedArchives: Set<string>;
   onSelect: (archive: ServerArchive) => void;
   onLocalSelect: () => void;
+  onLocalCacheSelect: (archive: any) => void;
   onClearCache: (name: string) => void;
   isScanning: boolean;
 }
@@ -24,6 +25,7 @@ export const ArchiveDashboard: React.FC<ArchiveDashboardProps> = ({
   cachedArchives,
   onSelect,
   onLocalSelect,
+  onLocalCacheSelect,
   onClearCache,
   isScanning
 }) => {
@@ -107,7 +109,7 @@ export const ArchiveDashboard: React.FC<ArchiveDashboardProps> = ({
         {localArchives.map((archive) => (
           <div key={archive.name} className="relative group text-black">
             <button
-              onClick={onLocalSelect}
+              onClick={() => onLocalCacheSelect(archive)}
               disabled={isScanning}
               className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-white shadow-sm border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all flex flex-col text-left disabled:opacity-50"
             >
