@@ -82,8 +82,13 @@ export const PostThumbnail = ({ post, className, thumbnailUrl, onRequestThumbnai
     }
   }, [isInView, isVideo, mainMedia.url, mainMedia.size, post.id, onRequestThumbnail, videoThumbnail]);
 
-  // Use high-res thumbnail if available, then video thumb, then original (if small enough), then placeholder
-  const displayUrl = thumbnailUrl || videoThumbnail || (isVideo ? null : post.thumbnail);
+  // Determine if we are actually expecting a high-res thumbnail
+  const ONE_MIB = 1024 * 1024;
+  const isHighRes = !isVideo && mainMedia.size && mainMedia.size > ONE_MIB;
+  const isGenerating = isHighRes && !thumbnailUrl;
+
+  // Use high-res thumbnail if available, then video thumb, then original
+  const displayUrl = thumbnailUrl || videoThumbnail || post.thumbnail;
 
   if (!displayUrl && isVideo) {
     return (
@@ -106,7 +111,11 @@ export const PostThumbnail = ({ post, className, thumbnailUrl, onRequestThumbnai
       <img 
         src={displayUrl} 
         alt="" 
-        className={cn("w-full h-full object-cover transition-all duration-700", className, !thumbnailUrl && !videoThumbnail ? "blur-sm scale-105" : "blur-0 scale-100")} 
+        className={cn(
+          "w-full h-full object-cover transition-all duration-700", 
+          className, 
+          isGenerating ? "blur-sm scale-105" : "blur-0 scale-100"
+        )} 
         referrerPolicy="no-referrer"
         loading="lazy"
       />
