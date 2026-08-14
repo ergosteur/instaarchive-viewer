@@ -15,11 +15,24 @@ import {
   Loader2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import * as idb from 'idb-keyval';
 
 import { cn } from './lib/utils';
 import { LocalArchiveFile, RemoteArchiveFile } from './lib/archive-files';
-import { Post, ServerArchive } from './types';
+import {
+  deleteCachedArchive,
+  getCachedArchive,
+  listCachedArchives,
+  listCachedArchiveNames,
+  migrateLegacyCache,
+  restoreArchive,
+  saveDirectoryHandle,
+} from './lib/archive-cache';
+import {
+  filesFromDirectory,
+  isDirectoryPickerSupported,
+  pickDirectory,
+} from './lib/directory-handle';
+import { CacheData, Post, ServerArchive, ServerArchiveFile } from './types';
 import { ArchiveDashboard } from './components/ArchiveDashboard';
 import { StoryViewer } from './components/StoryViewer';
 import { PostModal } from './components/PostModal';
@@ -29,6 +42,7 @@ import { useThumbnailQueue } from './hooks/useThumbnailQueue';
 
 export default function App() {
   const [showStoryViewer, setShowStoryViewer] = useState(false);
+  const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
   const [visiblePostsCount, setVisiblePostsCount] = useState(90);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   
@@ -37,33 +51,35 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'posts' | 'reels' | 'saved'>('posts');
   const [serverArchives, setServerArchives] = useState<ServerArchive[]>([]);
   const [cachedArchives, setCachedArchives] = useState<Set<string>>(new Set());
-  const [localCachedArchives, setLocalCachedArchives] = useState<any[]>([]);
+  const [localCachedArchives, setLocalCachedArchives] = useState<CacheData[]>([]);
   const [isServerMode, setIsServerMode] = useState(false);
+  /** True once GET /api/archives has settled, successfully or not. */
+  const [archivesFetched, setArchivesFetched] = useState(false);
   const [currentArchive, setCurrentArchive] = useState<ServerArchive | null>(null);
+
+  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+
+  /**
+   * The query string as it was when the app booted.
+   *
+   * Captured during the first render because the URL is rewritten from app
+   * state as soon as anything loads; reading `window.location` later would see
+   * the rewritten value rather than the link the user actually followed.
+   */
+  const initialParamsRef = useRef(new URLSearchParams(window.location.search));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profilePicInputRef = useRef<HTMLInputElement>(null);
 
-  const { cacheHits, requestThumbnail } = useThumbnailQueue();
-
   const refreshCachedArchives = useCallback(async () => {
     try {
-      const keys = await idb.keys();
-      setCachedArchives(new Set(keys.map(String)));
-
-      const locals: any[] = [];
-      for (const key of keys) {
-        const data: any = await idb.get(key);
-        if (data && data.isLocal) {
-          // Fallback for missing allProfilePics in local cached metadata
-          if (!data.profileMetadata.allProfilePics) {
-            data.profileMetadata.allProfilePics = data.profileMetadata.profilePic ? [data.profileMetadata.profilePic] : [];
-          }
-          locals.push(data);
-        }
-      }
-      setLocalCachedArchives(locals);
-    } catch (e) {}
+      // Names come from key prefixes, so listing no longer deserializes every
+      // cached thumbnail blob just to find out which entries are archives.
+      setCachedArchives(new Set(await listCachedArchiveNames()));
+      setLocalCachedArchives((await listCachedArchives()).filter(a => a.isLocal));
+    } catch (e) {
+      console.error('[Cache] Failed to list cached archives:', e);
+    }
   }, []);
 
   const {
@@ -75,6 +91,8 @@ export default function App() {
     currentScanningImage,
     allPosts,
     allStories,
+    allHighlights,
+    setAllHighlights,
     profileMetadata,
     handleFiles,
     setAllPosts,
@@ -82,7 +100,8 @@ export default function App() {
     setProfileMetadata,
     setIsScanning,
     setScanningPhase,
-    resetScannerState
+    resetScannerState,
+    registerUrl
   } = useArchiveScanner('', currentArchive, refreshCachedArchives);
 
   const [lastLoadedScanningImage, setLastLoadedScanningImage] = useState<string | null>(null);
@@ -98,6 +117,9 @@ export default function App() {
     allProfilePics
   } = profileMetadata;
 
+  // Thumbnails are keyed per archive, so the queue is scoped to the open one.
+  const { cacheHits, requestThumbnail } = useThumbnailQueue(currentArchive?.name ?? username ?? '');
+
   useEffect(() => {
     fetch('/api/archives')
       .then(res => {
@@ -107,21 +129,51 @@ export default function App() {
         }
         return [];
       })
-      .then(data => setServerArchives(data))
-      .catch(() => setIsServerMode(false));
+      .then(data => setServerArchives(Array.isArray(data) ? data : []))
+      .catch(() => setIsServerMode(false))
+      // Deep-link resolution waits on this rather than on `isServerMode`, which
+      // is still false while the request is in flight.
+      .finally(() => setArchivesFetched(true));
   }, []);
 
   useEffect(() => {
-    refreshCachedArchives();
+    migrateLegacyCache().finally(refreshCachedArchives);
   }, [refreshCachedArchives]);
 
-  const clearCache = async (name: string) => { await idb.del(name); await refreshCachedArchives(); };
+  const clearCache = async (name: string) => { await deleteCachedArchive(name); await refreshCachedArchives(); };
+
+  /**
+   * Archives with a `- reels` sidecar directory say outright which posts are
+   * reels; only fall back to the "lone video" heuristic for archives that have
+   * no such directory.
+   */
+  const hasReelSource = useMemo(() => allPosts.some(p => p.source === 'reels'), [allPosts]);
+  const isReel = useCallback((p: Post) => (
+    hasReelSource ? p.source === 'reels' : p.media.length === 1 && p.media[0].type === 'video'
+  ), [hasReelSource]);
 
   const filteredPosts = useMemo(() => {
-    if (activeTab === 'reels') return allPosts.filter(p => p.media.length === 1 && p.media[0].type === 'video');
-    if (activeTab === 'posts') return allPosts.filter(p => !(p.media.length === 1 && p.media[0].type === 'video'));
+    if (activeTab === 'reels') return allPosts.filter(isReel);
+    if (activeTab === 'posts') return allPosts.filter(p => !isReel(p));
     return [];
-  }, [allPosts, activeTab]);
+  }, [allPosts, activeTab, isReel]);
+
+  /** Story highlights, grouped into the circles shown under the bio. */
+  const highlightGroups = useMemo(() => {
+    const groups = new Map<string, Post[]>();
+    for (const item of allHighlights) {
+      const title = item.highlightTitle?.trim() || 'Highlights';
+      if (!groups.has(title)) groups.set(title, []);
+      groups.get(title)!.push(item);
+    }
+    return Array.from(groups, ([title, items]) => ({
+      title,
+      items,
+      // The cover must be a still: most highlight items are videos, and a video
+      // URL in an <img> renders as a broken image.
+      cover: items.find(i => i.media[0]?.type === 'image')?.thumbnail,
+    }));
+  }, [allHighlights]);
 
   const handleTabChange = (tab: 'posts' | 'reels' | 'saved') => { setActiveTab(tab); setVisiblePostsCount(90); };
   const visiblePosts = useMemo(() => filteredPosts.slice(0, visiblePostsCount), [filteredPosts, visiblePostsCount]);
@@ -151,38 +203,50 @@ export default function App() {
     setScanningPhase('Checking Cache');
     
     try {
-      const cachedData = await idb.get(archive.name);
+      const cachedData = await getCachedArchive(archive.name);
       if (cachedData) {
-        console.log(`[Cache] Found cached data for ${archive.name}. File count: ${cachedData.fileCount} (Server has: ${archive.fileCount})`);
-        if (cachedData.fileCount === archive.fileCount) {
+        // Invalidate on the directory-mtime signature; fall back to file count
+        // for entries cached before signatures existed.
+        const fresh = archive.signature
+          ? cachedData.signature === archive.signature
+          : cachedData.fileCount === archive.fileCount;
+        console.log(`[Cache] Cached ${archive.name}: signature ${cachedData.signature} vs ${archive.signature} -> ${fresh ? 'fresh' : 'stale'}`);
+        if (fresh) {
           console.log(`[Cache] Cache hit! Restoring state...`);
-          setAllPosts(cachedData.posts);
-          setAllStories(cachedData.stories);
-          
-          // Handle migration from old cache schema where allProfilePics was a separate top-level key
-          const profileMetadata = { ...cachedData.profileMetadata };
-          if (!profileMetadata.allProfilePics && cachedData.allProfilePics) {
-            profileMetadata.allProfilePics = cachedData.allProfilePics;
+          const restored = await restoreArchive(cachedData, registerUrl);
+          if (restored) {
+            setAllPosts(restored.posts);
+            setAllStories(restored.stories);
+            setAllHighlights(restored.highlights);
+            setProfileMetadata({
+              ...restored.profileMetadata,
+              allProfilePics: restored.profileMetadata.allProfilePics
+                ?? (restored.profileMetadata.profilePic ? [restored.profileMetadata.profilePic] : []),
+            });
+            setVisiblePostsCount(90);
+            setIsScanning(false);
+            console.log(`[Cache] Archive ${archive.name} loaded successfully from cache.`);
+            return;
           }
-          if (!profileMetadata.allProfilePics) {
-            profileMetadata.allProfilePics = profileMetadata.profilePic ? [profileMetadata.profilePic] : [];
-          }
-          
-          setProfileMetadata(profileMetadata);
-          setVisiblePostsCount(90);
-          setIsScanning(false);
-          console.log(`[Cache] Archive ${archive.name} loaded successfully from cache.`);
-          return;
         }
       }
 
       console.log(`[Scanner] Starting fresh scan from server API...`);
-      const res = await fetch(`/api/archives/${archive.name}/files`);
-      const filePaths: string[] = await res.json();
-      
-      const archiveFiles = filePaths.map(p => {
-        const name = p.split(/[/\\]/).pop() || p;
-        return new RemoteArchiveFile(name, p, 0, `/archives/${archive.name}/${p}`);
+      const res = await fetch(`/api/archives/${encodeURIComponent(archive.name)}/files`);
+      const entries: (ServerArchiveFile | string)[] = await res.json();
+
+      const archiveFiles = entries.map(entry => {
+        // Older servers returned bare path strings relative to the archive dir.
+        const legacy = typeof entry === 'string';
+        const filePath = legacy ? entry : entry.path;
+        const url = legacy
+          ? `/archives/${encodeURI(`${archive.name}/${filePath}`)}`
+          : `/archives/${encodeURI(filePath)}`;
+        const name = filePath.split(/[/\\]/).pop() || filePath;
+        const source = legacy
+          ? undefined
+          : { kind: entry.kind, dir: filePath.split('/')[0], title: entry.title };
+        return new RemoteArchiveFile(name, filePath, legacy ? 0 : entry.size, url, source, legacy ? undefined : entry.mtime);
       });
 
       await handleFiles(archiveFiles, archive);
@@ -190,30 +254,43 @@ export default function App() {
       console.error('[Scanner] Failed to load server archive:', err);
       setIsScanning(false);
     }
-  }, [handleFiles, setAllPosts, setAllStories, setProfileMetadata, setIsScanning, setScanningPhase]);
+  }, [handleFiles, registerUrl, setAllPosts, setAllStories, setAllHighlights, setProfileMetadata, setIsScanning, setScanningPhase]);
 
-  const loadLocalCachedArchive = useCallback(async (archive: any) => {
+  /**
+   * Open a local archive straight from cache.
+   *
+   * The cached posts carry file *paths*, not URLs — blob: URLs do not survive a
+   * reload — so this re-opens the stored directory handle and mints fresh URLs
+   * for those paths. No re-parsing happens, which is what keeps it instant.
+   *
+   * If the folder can no longer be reached (permission revoked, folder moved,
+   * or the browser never supported directory handles) we fall back to asking
+   * for the folder again rather than rendering an archive of broken images.
+   */
+  const loadLocalCachedArchive = useCallback(async (archive: CacheData) => {
     console.log(`[Cache] Loading local archive from cache: ${archive.name}`);
     setIsScanning(true);
     setCurrentArchive(null);
     setScanningPhase('Checking Cache');
-    
+
     try {
-      // Small delay for UI transition
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      setAllPosts(archive.posts || []);
-      setAllStories(archive.stories || []);
-      
-      const profileMetadata = { ...archive.profileMetadata };
-      if (!profileMetadata.allProfilePics && archive.allProfilePics) {
-        profileMetadata.allProfilePics = archive.allProfilePics;
+      const restored = await restoreArchive(archive, registerUrl);
+
+      if (!restored) {
+        console.warn(`[Cache] Folder for ${archive.name} unavailable; re-prompting.`);
+        setIsScanning(false);
+        await openLocalFolder(archive.name);
+        return;
       }
-      if (!profileMetadata.allProfilePics) {
-        profileMetadata.allProfilePics = profileMetadata.profilePic ? [profileMetadata.profilePic] : [];
-      }
-      
-      setProfileMetadata(profileMetadata);
+
+      setAllPosts(restored.posts);
+      setAllStories(restored.stories);
+      setAllHighlights(restored.highlights);
+      setProfileMetadata({
+        ...restored.profileMetadata,
+        allProfilePics: restored.profileMetadata.allProfilePics
+          ?? (restored.profileMetadata.profilePic ? [restored.profileMetadata.profilePic] : []),
+      });
       setVisiblePostsCount(90);
       setIsScanning(false);
       console.log(`[Cache] Local archive ${archive.name} restored from cache.`);
@@ -221,13 +298,47 @@ export default function App() {
       console.error('[Cache] Failed to restore local archive:', err);
       setIsScanning(false);
     }
-  }, [setAllPosts, setAllStories, setProfileMetadata, setIsScanning, setScanningPhase]);
+  }, [registerUrl, setAllPosts, setAllStories, setAllHighlights, setProfileMetadata, setIsScanning, setScanningPhase]);
 
-  const handleLocalFiles = (files: FileList | null) => { if (!files) return; const archiveFiles = Array.from(files).map(f => new LocalArchiveFile(f)); handleFiles(archiveFiles); };
-  const triggerFileSelect = () => fileInputRef.current?.click();
+  const handleLocalFiles = (files: FileList | null) => {
+    if (!files) return;
+    handleFiles(Array.from(files).map(f => new LocalArchiveFile(f)));
+  };
+
+  /**
+   * Prefer the File System Access API so the folder can be reopened later
+   * without a re-prompt; fall back to <input webkitdirectory> elsewhere
+   * (Firefox and Safari have no showDirectoryPicker), where the archive is
+   * re-scanned from scratch on every visit.
+   */
+  const openLocalFolder = useCallback(async (expectedName?: string) => {
+    if (!isDirectoryPickerSupported()) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    const handle = await pickDirectory();
+    if (!handle) return;
+
+    if (expectedName && handle.name !== expectedName) {
+      console.warn(`[Cache] Picked "${handle.name}" but expected "${expectedName}"; scanning as picked.`);
+    }
+
+    // Persist before scanning so the scan records that a handle exists.
+    await saveDirectoryHandle(handle.name, handle);
+    const files = await filesFromDirectory(handle);
+    await handleFiles(files);
+  }, [handleFiles]);
+
+  const triggerFileSelect = () => { void openLocalFolder(); };
   const loadMore = () => setVisiblePostsCount(prev => prev + 90);
 
   useEffect(() => {
+    // Hold the URL until the deep link has been consumed, otherwise this effect
+    // runs on mount with nothing loaded yet and erases the very parameters the
+    // loader below is waiting to read.
+    if (!hasInitialLoaded) return;
+
     const params = new URLSearchParams(window.location.search);
     if (currentArchive) params.set('a', currentArchive.name);
     else if (allPosts.length > 0 && username) params.set('a', username);
@@ -246,37 +357,60 @@ export default function App() {
       const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
       window.history.replaceState(null, '', newUrl);
     }
-  }, [currentArchive?.name, username, allPosts.length, activeTab, selectedPost?.id]);
+  }, [hasInitialLoaded, currentArchive?.name, username, allPosts.length, activeTab, selectedPost?.id]);
 
-  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
   useEffect(() => {
-    if (hasInitialLoaded || serverArchives.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
+    if (hasInitialLoaded) return;
+
+    const params = initialParamsRef.current;
     const archiveName = params.get('a');
     const tab = params.get('t');
-    const postId = params.get('p');
-    console.log('[Permalink] Initial read from URL:', { archiveName, tab, postId });
-    if (archiveName) {
-      const archive = serverArchives.find(a => a.name === archiveName);
-      if (archive) {
-        console.log(`[Permalink] Auto-loading archive: ?a=${archiveName}`);
-        loadServerArchive(archive);
-        if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
-          setActiveTab(tab as any);
-        }
-      }
+    console.log('[Permalink] Initial read from URL:', {
+      archiveName, tab, postId: params.get('p'),
+    });
+
+    if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
+      setActiveTab(tab as 'posts' | 'reels' | 'saved');
+    }
+
+    if (!archiveName) {
+      setHasInitialLoaded(true);
+      return;
+    }
+
+    // Wait for the archive list before deciding the link is unresolvable.
+    if (!archivesFetched) return;
+
+    const archive = serverArchives.find(a => a.name === archiveName);
+    if (archive) {
+      console.log(`[Permalink] Auto-loading archive: ?a=${archiveName}`);
+      loadServerArchive(archive);
+    } else {
+      console.warn(`[Permalink] No archive named "${archiveName}".`);
     }
     setHasInitialLoaded(true);
-  }, [serverArchives, hasInitialLoaded, loadServerArchive]);
+  }, [serverArchives, archivesFetched, hasInitialLoaded, loadServerArchive]);
 
+  /**
+   * Apply a `?p=` deep link exactly once per opened archive.
+   *
+   * Keying on the archive rather than on `selectedPost` matters: re-reading the
+   * URL whenever the selection changes would reopen the post the user just
+   * closed, and only worked before because the URL-writing effect happened to
+   * be declared first and had already stripped the param.
+   */
+  const appliedPostParamRef = useRef<string | null>(null);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const postId = params.get('p');
-    if (postId && allPosts.length > 0 && !selectedPost) {
-      const post = allPosts.find(p => p.id === postId);
-      if (post) setSelectedPost(post);
-    }
-  }, [allPosts, selectedPost]);
+    const archiveKey = currentArchive?.name ?? username;
+    if (!archiveKey || allPosts.length === 0) return;
+    if (appliedPostParamRef.current === archiveKey) return;
+    appliedPostParamRef.current = archiveKey;
+
+    const postId = initialParamsRef.current.get('p');
+    if (!postId) return;
+    const post = allPosts.find(p => p.id === postId);
+    if (post) setSelectedPost(post);
+  }, [allPosts, currentArchive?.name, username]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
@@ -367,6 +501,32 @@ export default function App() {
               </div>
             </header>
 
+            {highlightGroups.length > 0 && (
+              <div className="flex gap-6 md:gap-8 overflow-x-auto scrollbar-hide px-4 pb-2">
+                {highlightGroups.map(group => (
+                  <button
+                    key={group.title}
+                    onClick={() => setActiveHighlight(group.title)}
+                    className="flex flex-col items-center gap-2 shrink-0 group/hl"
+                    title={`${group.title} — ${group.items.length} item${group.items.length === 1 ? '' : 's'}`}
+                  >
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full p-[2px] bg-gray-200 group-hover/hl:bg-gray-300 transition-colors">
+                      <div className="w-full h-full rounded-full bg-white p-[2px]">
+                        <div className="w-full h-full rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                          {group.cover ? (
+                            <img src={group.cover} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+                          ) : (
+                            <Play size={18} className="text-gray-400" fill="currentColor" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] max-w-[80px] truncate text-gray-700">{group.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4 text-black">
               <div className="flex justify-center gap-12 flex-1 text-black">
                 <button onClick={() => handleTabChange('posts')} className={cn("flex items-center gap-2 py-4 border-t text-xs font-bold tracking-widest uppercase transition-all text-black", activeTab === 'posts' ? "border-black text-black" : "border-transparent text-gray-400")}><Grid3X3 size={14} />Posts</button>
@@ -389,7 +549,7 @@ export default function App() {
                 </motion.div>
               ))}
             </div>
-            {filteredPosts.length > visiblePostsCount && <div className="flex justify-center pt-12 text-black text-black"><button onClick={loadMore} className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm text-black text-black">Load More</button></div>}
+            {filteredPosts.length > visiblePostsCount && <div className="flex justify-center pt-12 text-black"><button onClick={loadMore} className="bg-white border border-gray-200 px-8 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors shadow-sm text-black">Load More</button></div>}
           </div>
         )}
       </main>
@@ -410,10 +570,20 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>{showStoryViewer && allStories.length > 0 && <StoryViewer stories={allStories} onClose={() => setShowStoryViewer(false)} profilePic={profilePic} />}</AnimatePresence>
+      <AnimatePresence>
+        {activeHighlight && (
+          <StoryViewer
+            stories={highlightGroups.find(g => g.title === activeHighlight)?.items ?? []}
+            title={activeHighlight}
+            onClose={() => setActiveHighlight(null)}
+            profilePic={profilePic}
+          />
+        )}
+      </AnimatePresence>
 
       {!isScanning && (
         <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-xs text-gray-400 space-y-4 text-black">
-          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight text-black text-black"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight text-black"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
           <div className="text-black/40 text-black">© 2026 InstaArchive Viewer</div>
         </footer>
       )}

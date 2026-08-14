@@ -6,15 +6,15 @@ import {
   Trash2, 
   Zap 
 } from 'lucide-react';
-import { ServerArchive } from '../types';
+import { CacheData, ServerArchive } from '../types';
 
 interface ArchiveDashboardProps {
   archives: ServerArchive[];
-  localArchives?: any[];
+  localArchives?: CacheData[];
   cachedArchives: Set<string>;
   onSelect: (archive: ServerArchive) => void;
   onLocalSelect: () => void;
-  onLocalCacheSelect: (archive: any) => void;
+  onLocalCacheSelect: (archive: CacheData) => void;
   onClearCache: (name: string) => void;
   isScanning: boolean;
 }
@@ -85,7 +85,11 @@ export const ArchiveDashboard: React.FC<ArchiveDashboardProps> = ({
                 </div>
                 <div className="p-4 space-y-1">
                   <span className="font-bold text-sm block truncate uppercase tracking-tight text-black/80">{archive.name}</span>
-                  <span className="text-[10px] text-gray-400 uppercase tracking-widest">{archive.fileCount} items</span>
+                  <span className="text-[10px] text-gray-400 uppercase tracking-widest">
+                    {archive.fileCount === null
+                      ? `${archive.sources?.length ?? 1} source${(archive.sources?.length ?? 1) === 1 ? '' : 's'}`
+                      : `${archive.fileCount} items`}
+                  </span>
                 </div>
               </button>
               

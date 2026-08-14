@@ -10,9 +10,8 @@ import {
   Bookmark 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, parseISO } from 'date-fns';
 import { Post } from '../types';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafe } from '../lib/utils';
 import { MediaRenderer } from './MediaRenderer';
 
 interface PostModalProps {
@@ -150,7 +149,7 @@ export const PostModal: React.FC<PostModalProps> = ({
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 min-h-0 md:max-h-[60vh] text-black">
               <div className="flex gap-3 text-black">
                 <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase overflow-hidden text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div>
-                <div className="text-sm text-black"><span className="font-semibold mr-2 text-black">{post.username}</span><span className="whitespace-pre-wrap text-black">{post.caption}</span><div className="mt-2 text-xs text-gray-500 uppercase tracking-tight text-black">{format(parseISO(post.date), 'MMMM d, yyyy')}</div></div>
+                <div className="text-sm text-black"><span className="font-semibold mr-2 text-black">{post.username}</span><span className="whitespace-pre-wrap text-black">{post.caption}</span><div className="mt-2 text-xs text-gray-500 uppercase tracking-tight text-black">{formatDateSafe(post.date, 'MMMM d, yyyy')}</div></div>
               </div>
             </div>
             <div className="p-3 md:p-4 border-t border-gray-100 space-y-3 shrink-0 bg-white text-black">

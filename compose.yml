@@ -5,7 +5,13 @@ services:
       - "3000:3000"
     volumes:
       - ./archives:/archives:ro,z
+      # Persists the archive index so restarts don't re-walk every file.
+      - instaarchive-cache:/cache
     environment:
       - PORT=3000
       - ARCHIVES_DIR=/archives
+      - CACHE_DIR=/cache
     restart: unless-stopped
+
+volumes:
+  instaarchive-cache:
