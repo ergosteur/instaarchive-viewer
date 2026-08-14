@@ -33,6 +33,21 @@ interface DirIndex {
 const MEDIA_RE = /\.(jpg|jpeg|png|webp|gif|bmp|tiff|mp4|webm|ogv|mov)$/i;
 const STAT_CONCURRENCY = 16;
 
+/**
+ * Directories the walk must never descend into.
+ *
+ * NAS filesystems scatter sidecar metadata *inside* every folder, not just at
+ * the share root: Synology writes `@eaDir` (thumbnails and indexing data),
+ * `#recycle` holds deletions, and `.sync` is Resilio's state. Indexing those
+ * would count NAS thumbnails as archive media and spend a stat on each one —
+ * measured on a real share, `@eaDir` accounted for 12,516 of 123,023 files.
+ *
+ * The archive root is already filtered by prefix; this is the same rule applied
+ * at every level below it.
+ */
+export const isSystemDirectory = (name: string): boolean =>
+  name.startsWith('@') || name.startsWith('.') || name === '#recycle' || name === '#snapshot';
+
 export class ArchiveIndex {
   private dirs = new Map<string, DirIndex>();
   private inFlight = new Map<string, Promise<DirIndex>>();
@@ -43,7 +58,7 @@ export class ArchiveIndex {
   /** Visible (non-system) directories at the archive root. */
   private listRootDirs(): string[] {
     return fs.readdirSync(this.archivesDir, { withFileTypes: true })
-      .filter(e => e.isDirectory() && !/^[.@_]/.test(e.name))
+      .filter(e => e.isDirectory() && !isSystemDirectory(e.name) && !e.name.startsWith('_'))
       .map(e => e.name);
   }
 
@@ -69,6 +84,7 @@ export class ArchiveIndex {
       return out;
     }
     for (const entry of entries) {
+      if (isSystemDirectory(entry.name)) continue;
       const rel = base ? `${base}/${entry.name}` : entry.name;
       if (entry.isDirectory()) out = out.concat(this.walk(path.join(absDir, entry.name), rel));
       else if (entry.isFile()) out.push(rel);
