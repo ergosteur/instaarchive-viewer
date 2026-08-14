@@ -95,10 +95,39 @@ Below `md`, opening a post renders a scrolling feed page rather than the modal (
 Serves `/api/archives`, `/api/archives/:name/files`, static `/archives`, and the built SPA. Notes:
 
 - Express decodes route params **after** segment matching, so `..%2f` reaches the handler as `../`. All user-supplied archive names go through `resolveArchivePath`.
-- Sets CSP and related security headers. The CSP allows `blob:`/`data:` for media and `unsafe-inline` styles (the animation library sets inline styles); scripts stay same-origin only.
 - `os.userInfo()` throws for a UID with no `/etc/passwd` entry, which is what `--user 1234:1234` produces — use `describeUser()`.
 
+### CSP: do not tighten `script-src` or `connect-src` without testing xz
+
+The xz decompressor for Instaloader `.json.xz` sidecars is **WebAssembly**, embedded as a `data:` URL the library fetches at startup. The policy must keep:
+
+```
+script-src  'self' 'wasm-unsafe-eval'     // compile wasm, without allowing eval() of JS
+connect-src 'self' data:                  // fetch the embedded module
+```
+
+Removing either breaks decoding with a bare `TypeError: Failed to fetch` **and no stack** — it surfaces through `new Response(stream).json()`, so it reads like a network fault rather than a policy block. The visible symptom is not an error page: archives silently lose captions, story flags and all profile metadata (follower counts, bio, name). This shipped broken for several releases.
+
+To check quickly, run in the page console:
+
+```js
+await fetch('data:application/wasm;base64,AGFzbQEAAAA=')            // connect-src
+await WebAssembly.instantiate(Uint8Array.of(0,97,115,109,1,0,0,0))  // script-src
+```
+
+**The Vite dev server does not send these headers**, so anything CSP-related is invisible in `npm run dev`. Verify security-header and PWA behaviour by building and serving `dist/` through `server.js`, not against the dev server.
+
+### PWA: server-only changes do not reach installed clients
+
+The service worker precaches `index.html` **together with its response headers**. A change that touches only the server (a CSP fix, a new header) leaves the client build byte-identical, so the precache manifest and `sw.js` are unchanged, the worker never updates, and installed clients keep replaying the old shell with the old headers — indefinitely.
+
+`vite.config.ts` therefore compiles the package version into the client via `define: { __APP_VERSION__ }`, and `App.tsx` renders it in the footer. That is **load-bearing**: it makes every release change the bundle hash → `index.html` → its precache revision → `sw.js`, which is what browsers byte-compare to decide whether to update. Don't remove it as dead weight.
+
+To recover a client stuck on an old shell: unregister the service worker, delete its caches, reload.
+
 ### Deployment
+
+Live archives live in `<share>/Instagram-archive/archives/` — one directory per profile plus sidecars. Directories that are not Instagram profiles (tool output, exports from other services) sit *outside* that folder so they never reach the viewer.
 
 Container runs as non-root. The image defaults to `node`, but the archive share must be *listable* by that UID — a mode-711 share owned by another account needs `user: "<uid>:<gid>"` in compose. Mount a volume at `/cache` so the index survives restarts.
 
