@@ -16,7 +16,8 @@ InstaArchive Viewer is a React 19 + Vite 6 PWA for browsing archived Instagram d
 - `npm test` / `npm run test:watch` — vitest
 - `npx vitest run src/lib/archive-patterns.test.ts` — a single test file
 - `npm run jd2 -- --archives <dir> --dry-run` — generate JDownloader `.crawljob`
-  files for every profile on disk (see `scripts/jd2-sync.ts`)
+  files for every profile on disk (see `scripts/jd2-sync.ts` and
+  `docs/jdownloader.md`)
 
 Local development usually needs both `npm run dev` and `npm run server`. Local-folder mode works without the backend; server-mode archives do not.
 
