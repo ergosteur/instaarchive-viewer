@@ -26,9 +26,10 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
 }) => {
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
-  // Start muted: Safari and Firefox refuse to autoplay audible media, which
-  // would stall the reel on its first video.
-  const [isMuted, setIsMuted] = useState(true);
+  // Opening the reel is a user gesture, so try for sound; the effect below
+  // falls back to muted if the browser refuses, which would otherwise stall
+  // the progress bar on the first video.
+  const [isMuted, setIsMuted] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const story = stories[currentStoryIndex];
   const primary = story?.media?.[0];
@@ -60,6 +61,22 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
 
     return () => clearInterval(timer);
   }, [currentStoryIndex, primary]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || primary?.type !== 'video') return;
+
+    let cancelled = false;
+    video.muted = false;
+    video.play().catch(() => {
+      if (cancelled) return;
+      setIsMuted(true);
+      video.muted = true;
+      video.play().catch(() => { /* leave it to the controls */ });
+    });
+
+    return () => { cancelled = true; };
+  }, [primary]);
 
   useEffect(() => {
     if (progress >= 100) {
