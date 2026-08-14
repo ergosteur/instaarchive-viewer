@@ -97,12 +97,22 @@ export const PostModal: React.FC<PostModalProps> = ({
   };
   const swipePower = (offset: number, velocity: number) => Math.abs(offset) * velocity;
 
+  /*
+   * Horizontal padding on the overlay reserves a gutter for the prev/next
+   * arrows so they always sit *outside* the modal. Without it the modal grows
+   * until it sits under them and a white chevron lands on the white caption
+   * panel, leaving the control invisible until hovered.
+   *
+   * overscroll-contain stops wheel events chaining through to the very long
+   * post grid behind the overlay.
+   */
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center bg-[#0c1014]/95 md:bg-[#0c1014]/70 p-0 md:p-10 overflow-y-auto text-black" onClick={onClose}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center bg-[#0c1014]/95 md:bg-[#0c1014]/70 p-0 md:py-10 md:px-16 lg:px-24 overflow-y-auto overscroll-contain text-black" onClick={onClose}>
       <div className="min-h-full w-full flex items-center justify-center md:py-0">
         <button onClick={onClose} className="fixed top-4 right-4 text-white hover:text-gray-300 z-50 p-2 md:p-3 bg-black/20 rounded-full backdrop-blur-sm"><X size={24} className="md:w-8 md:h-8" /></button>
-        {hasPrevPost && onPrevPost && <button onClick={(e) => { e.stopPropagation(); onPrevPost(); }} className="hidden md:block fixed left-4 md:left-10 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-50 transition-transform hover:scale-110 active:scale-90"><ChevronLeft size={48} strokeWidth={1.5} /></button>}
-        {hasNextPost && onNextPost && <button onClick={(e) => { e.stopPropagation(); onNextPost(); }} className="hidden md:block fixed right-4 md:right-10 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-50 transition-transform hover:scale-110 active:scale-90"><ChevronRight size={48} strokeWidth={1.5} /></button>}
+        {/* Solid pill so the arrows read against whatever sits behind them. */}
+        {hasPrevPost && onPrevPost && <button aria-label="Previous post" onClick={(e) => { e.stopPropagation(); onPrevPost(); }} className="hidden md:flex items-center justify-center fixed md:left-3 lg:left-6 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-lg transition-transform hover:scale-110 active:scale-90"><ChevronLeft size={28} strokeWidth={2} /></button>}
+        {hasNextPost && onNextPost && <button aria-label="Next post" onClick={(e) => { e.stopPropagation(); onNextPost(); }} className="hidden md:flex items-center justify-center fixed md:right-3 lg:right-6 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-lg transition-transform hover:scale-110 active:scale-90"><ChevronRight size={28} strokeWidth={2} /></button>}
         <motion.div drag="y" dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.15} onDragEnd={(e, { offset, velocity }) => { if (offset.y > 200 || velocity.y > 800) onClose(); }} className="bg-black flex flex-col md:flex-row w-full max-w-6xl h-auto md:rounded-sm overflow-hidden shadow-2xl relative text-black" onClick={e => e.stopPropagation()}>
           <div className="relative bg-black flex items-center justify-center group overflow-hidden w-full h-auto text-black">
             <div className="w-full grid grid-cols-1 grid-rows-1 text-black">
@@ -138,7 +148,7 @@ export const PostModal: React.FC<PostModalProps> = ({
               </>
             )}
           </div>
-          <div className="w-full md:w-96 bg-white flex flex-col border-l border-gray-200 overflow-hidden shrink-0 text-black">
+          <div className="w-full md:w-80 lg:w-96 bg-white flex flex-col border-l border-gray-200 overflow-hidden shrink-0 text-black">
             <div className="p-3 md:p-4 border-b border-gray-100 flex items-center justify-between shrink-0 text-black">
               <div className="flex items-center gap-3 text-black">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-purple-600 p-0.5 text-black"><div className="w-full h-full rounded-full bg-white p-0.5 text-black"><div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center overflow-hidden text-[10px] font-bold uppercase text-black">{profilePic ? <img src={profilePic} alt="" className="w-full h-full object-cover text-black" referrerPolicy="no-referrer" /> : <span className="text-black">{post.username[0]}</span>}</div></div></div>
