@@ -15,6 +15,8 @@ InstaArchive Viewer is a React 19 + Vite 6 PWA for browsing archived Instagram d
 - `npm run lint` — type-check only (`tsc --noEmit`)
 - `npm test` / `npm run test:watch` — vitest
 - `npx vitest run src/lib/archive-patterns.test.ts` — a single test file
+- `npm run jd2 -- --archives <dir> --dry-run` — generate JDownloader `.crawljob`
+  files for every profile on disk (see `scripts/jd2-sync.ts`)
 
 Local development usually needs both `npm run dev` and `npm run server`. Local-folder mode works without the backend; server-mode archives do not.
 
@@ -71,14 +73,21 @@ Restoring an archive **rehydrates URLs from `path`**: server archives rebuild HT
 
 Images over 1MiB are downscaled in a Web Worker via `OffscreenCanvas`. The queue is **serial on purpose** — decoding several 50MP+ images at once OOMs the tab. `requestThumbnail` must keep a stable identity (it reads cache state through a ref), or every completed thumbnail re-runs the effect in all mounted thumbnails.
 
-### URL state (`src/App.tsx`)
+### URL state (`src/App.tsx`, `src/lib/routing.ts`)
 
-App state syncs to `?a=` / `?t=` / `?p=`. Two rules, both learned from real bugs:
+Paths mirror Instagram: `/<archive>/`, `/<archive>/reels/`, `/<archive>/p/<shortcode>/`. The old `?a=&t=&p=` form is still parsed for existing links but never written. Reserved prefixes (`api`, `archives`, `assets`…) can't be mistaken for a profile name.
 
-- The initial query string is captured into a ref on first render; the URL is rewritten from state as soon as anything loads, so reading `window.location` later sees the rewrite, not the user's link.
+A post URL carries no tab, as on Instagram — the tab is re-derived from the post's `source`, so a reel link lands on the Reels tab and pages through reels. Sidecar posts keep directory-scoped ids internally but expose only the shortcode.
+
+Three rules, all learned from real bugs:
+
+- The initial route is captured into a ref on first render; the URL is rewritten from state as soon as anything loads, so reading `window.location` later sees the rewrite, not the user's link.
 - URL writing is gated on `hasInitialLoaded`, otherwise it erases the deep link before the loader consumes it.
+- Deep-link resolution waits on the archive fetch having *settled* (`archivesFetched`), not on `isServerMode`, which is still false while the request is in flight.
 
-Deep-link resolution waits on the archive fetch having *settled*, not on `isServerMode` (which is still false while in flight).
+### Mobile feed (`src/components/PostFeed.tsx`)
+
+Below `md`, opening a post renders a scrolling feed page rather than the modal (`useIsMobile` decides). Only a window of posts is mounted; it grows both ways, and prepending corrects `scrollTop` in a `useLayoutEffect` so content doesn't jump. Only the post crossing the viewport centre plays its video and drives the URL. Desktop keeps `PostModal`; both share `MediaCarousel`.
 
 ### Backend (`server.ts`)
 
