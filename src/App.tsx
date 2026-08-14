@@ -17,7 +17,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 import { cn } from './lib/utils';
-import { PRESS } from './lib/motion';
+import { PRESS, prefersReducedMotion } from './lib/motion';
 import { buildPath, findPostBySlug, parseRoute, postSlug, tabForSource } from './lib/routing';
 import { LocalArchiveFile, RemoteArchiveFile } from './lib/archive-files';
 import {
@@ -110,6 +110,30 @@ export default function App() {
   } = useArchiveScanner('', currentArchive, refreshCachedArchives);
 
   const [lastLoadedScanningImage, setLastLoadedScanningImage] = useState<string | null>(null);
+
+  /**
+   * Blurred backdrops behind the scanning UI, newest last.
+   *
+   * Each new image is stacked *over* the previous one and fades in; the one
+   * underneath stays fully opaque until it's covered. Cross-fading by swapping
+   * a single element left the pale backdrop showing through mid-transition,
+   * which read as a white flash between every image.
+   */
+  const [scanBackdrops, setScanBackdrops] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!lastLoadedScanningImage) return;
+    setScanBackdrops(prev =>
+      prev[prev.length - 1] === lastLoadedScanningImage
+        ? prev
+        : [...prev, lastLoadedScanningImage].slice(-3),
+    );
+  }, [lastLoadedScanningImage]);
+
+  // Don't carry one archive's backdrops into the next scan.
+  useEffect(() => {
+    if (!isScanning) { setScanBackdrops([]); setLastLoadedScanningImage(null); }
+  }, [isScanning]);
 
   const {
     username,
@@ -460,17 +484,28 @@ export default function App() {
                 onLoad={() => setLastLoadedScanningImage(currentScanningImage)} 
               />
             )}
-            <div className="absolute inset-0 z-0">
-              <AnimatePresence initial={false}>
-                <motion.img 
-                  key={lastLoadedScanningImage}
-                  src={lastLoadedScanningImage || undefined}
+            {/*
+              The 0.4 lives on the group, not the images: two layers overlap
+              during a cross-fade, and fading them individually would darken the
+              backdrop as they cross. Inside the group each layer goes to full
+              opacity, so the stack is always completely covered.
+            */}
+            <div className="absolute inset-0 z-0 opacity-40">
+              {scanBackdrops.map(src => (
+                <motion.img
+                  key={src}
+                  src={src}
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 0.4 }}
-                  transition={{ duration: 1.5 }}
+                  animate={{ opacity: 1 }}
+                  transition={prefersReducedMotion() ? { duration: 0 } : { duration: 0.9, ease: 'easeInOut' }}
+                  onAnimationComplete={() => setScanBackdrops(prev => {
+                    // Once this layer is opaque it hides everything below it.
+                    const i = prev.indexOf(src);
+                    return i > 0 ? prev.slice(i) : prev;
+                  })}
                   className="absolute inset-0 w-full h-full object-cover blur-[60px] scale-110"
                 />
-              </AnimatePresence>
+              ))}
             </div>
             <div className="absolute inset-0 bg-white/40 z-1" />
             <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center gap-8 text-black">

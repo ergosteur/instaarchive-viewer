@@ -14,7 +14,6 @@ export class LocalArchiveFile implements ArchiveFile {
   get size() { return this.file.size; }
   text() { return this.file.text(); }
   arrayBuffer() { return this.file.arrayBuffer(); }
-  stream() { return this.file.stream(); }
 
   /**
    * A blob: URL backed directly by the on-disk File.
@@ -55,15 +54,6 @@ export class RemoteArchiveFile implements ArchiveFile {
     const res = await fetch(this.url);
     return res.arrayBuffer();
   }
-  stream() {
-    const transform = new TransformStream();
-    fetch(this.url).then(res => {
-      if (res.body) res.body.pipeTo(transform.writable);
-      else transform.writable.getWriter().close();
-    });
-    return transform.readable;
-  }
-
   createObjectUrl() {
     return this.url;
   }

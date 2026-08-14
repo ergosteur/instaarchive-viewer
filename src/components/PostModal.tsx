@@ -82,11 +82,14 @@ export const PostModal: React.FC<PostModalProps> = ({
 
   useEffect(() => setCurrentIndex(0), [post.id]);
   useEffect(() => {
+    // Arrows page within the carousel — the thing the arrows visually point at.
+    // Moving between posts stays on the side buttons, with , and . as keyboard
+    // equivalents.
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') goToPost(1, 'x');
-      else if (e.key === 'ArrowLeft') goToPost(-1, 'x');
-      else if (e.key === '.') paginate(1);
-      else if (e.key === ',') paginate(-1);
+      if (e.key === 'ArrowRight') paginate(1);
+      else if (e.key === 'ArrowLeft') paginate(-1);
+      else if (e.key === '.') goToPost(1, 'x');
+      else if (e.key === ',') goToPost(-1, 'x');
       else if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);

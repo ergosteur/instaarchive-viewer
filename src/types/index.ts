@@ -50,7 +50,6 @@ export interface ArchiveFile {
   size: number;
   text(): Promise<string>;
   arrayBuffer(): Promise<ArrayBuffer>;
-  stream(): ReadableStream<Uint8Array>;
   url?: string;
   /**
    * A URL pointing at this file's contents. Local files mint a disk-backed

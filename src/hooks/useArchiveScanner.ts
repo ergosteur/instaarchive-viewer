@@ -107,11 +107,23 @@ export const useArchiveScanner = (
     /** Stable identity for a media file, used to rehydrate URLs after a reload. */
     const mediaPath = (file: ArchiveFile) => file.webkitRelativePath || file.name;
 
+    /**
+     * Decompress an `.xz` metadata sidecar.
+     *
+     * Read fully into memory first rather than handing the live HTTP body to
+     * the decompressor. These sidecars are a few KB, so buffering costs
+     * nothing, and streaming was actively harmful: the decompressor stops
+     * reading at the end of the xz member, leaving the response body neither
+     * drained nor cancelled. Across a couple of hundred sidecars that exhausts
+     * the connection pool and every later fetch fails with "Failed to fetch" —
+     * which silently cost Instaloader archives their captions, story flags and
+     * profile metadata, since all of it lives in these files.
+     */
     const parseXZFile = async (file: ArchiveFile) => {
       try {
-        const stream = new XzReadableStream(file.stream());
-        const response = new Response(stream);
-        return await response.json();
+        const compressed = await file.arrayBuffer();
+        const stream = new XzReadableStream(new Blob([compressed]).stream());
+        return await new Response(stream).json();
       } catch (e) { console.error(`[Scanner] XZ Parse Error:`, file.name, e); return null; }
     };
 
