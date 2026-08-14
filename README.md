@@ -54,10 +54,27 @@ If the app shows "No Archives Found" and logs `EACCES: permission denied`:
    chmod -R 755 /path/to/archives
    ```
 2. **SELinux (Fedora/RHEL/CentOS)**: Use the `:z` flag in your volume mount as shown above.
-3. **User Mapping**: You can force the container to run as your host user:
+3. **User Mapping**: The container runs as the non-root `node` user (UID 1000).
+   If your archives are readable only by another account, run as that user
+   instead — the container needs to *list* the archive directory, so `--x`
+   (traverse-only) permissions are not enough:
    ```bash
-   docker run --user $(id -u):$(id -g) ...
+   docker run --user $(stat -c '%u:%g' /path/to/archives) ...
    ```
+   In Compose:
+   ```yaml
+   services:
+     instaarchive:
+       user: "1234:1234"   # a UID that can read your archives
+   ```
+
+### Archive Index
+
+On first start the server walks the archive root once and caches the result,
+keyed by directory mtime. This matters on network storage: for a 110k-file
+archive root, listing went from ~52s per request to ~0.1s. Mount a volume at
+`/cache` (or set `CACHE_DIR`) so the index survives restarts, otherwise it is
+rebuilt on every start.
 
 ## Supported Archive Structure
 

@@ -16,7 +16,23 @@ const PORT = process.env.PORT || 3001;
 const ARCHIVES_DIR = path.resolve(process.env.ARCHIVES_DIR || path.join(__dirname, '_sample-archives'));
 
 console.log(`[Server] Initializing...`);
-console.log(`[Server] Running as user: ${os.userInfo().username} (UID: ${os.userInfo().uid}, GID: ${os.userInfo().gid})`);
+/**
+ * Describe the running user without assuming it exists in /etc/passwd.
+ *
+ * `os.userInfo()` throws ENOENT for a UID with no passwd entry, which is
+ * exactly what happens when the container is started with `--user 1234:1234`
+ * (as the deployment docs suggest) — previously crashing the server at boot.
+ */
+const describeUser = () => {
+  try {
+    const info = os.userInfo();
+    return `${info.username} (UID: ${info.uid}, GID: ${info.gid})`;
+  } catch {
+    return `UID: ${typeof process.getuid === 'function' ? process.getuid() : '?'}, GID: ${typeof process.getgid === 'function' ? process.getgid() : '?'} (no passwd entry)`;
+  }
+};
+
+console.log(`[Server] Running as user: ${describeUser()}`);
 console.log(`[Server] Environment ARCHIVES_DIR: ${process.env.ARCHIVES_DIR}`);
 console.log(`[Server] Resolved ARCHIVES_DIR: ${ARCHIVES_DIR}`);
 
@@ -114,7 +130,7 @@ app.get('/api/archives', (req, res) => {
     res.json(archives);
   } catch (err: any) {
     if (err.code === 'EACCES') {
-      console.error(`[API] Permission Denied! The server (UID ${os.userInfo().uid}) cannot read ${ARCHIVES_DIR}.`);
+      console.error(`[API] Permission Denied! The server (${describeUser()}) cannot read ${ARCHIVES_DIR}.`);
       console.error(`[API] Hint: If using Linux/Docker, check folder permissions (chmod 755) or SELinux context (append :z to your volume mount).`);
     } else {
       console.error('[API] Error listing archives:', err);
