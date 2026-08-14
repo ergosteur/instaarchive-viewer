@@ -1,8 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 // @ts-ignore
 import { XzReadableStream } from 'xz-decompress';
-import * as idb from 'idb-keyval';
-import { ArchiveFile, Post, ServerArchive } from '../types';
+import { ArchiveFile, CacheData, Post, ServerArchive } from '../types';
+import { setCachedArchive, getDirectoryHandle } from '../lib/archive-cache';
+import { parseArchiveFilename, scopedPostId, EXPORT_RE, INSTALOADER_RE } from '../lib/archive-patterns';
+
+const hasDirectoryHandle = async (name: string) => Boolean(await getDirectoryHandle(name));
 
 export const useArchiveScanner = (
   detectedUsername: string,
@@ -19,6 +22,7 @@ export const useArchiveScanner = (
   // Result state
   const [allPosts, setAllPosts] = useState<Post[]>([]);
   const [allStories, setAllStories] = useState<Post[]>([]);
+  const [allHighlights, setAllHighlights] = useState<Post[]>([]);
   const [profileMetadata, setProfileMetadata] = useState<{
     username: string;
     fullName: string;
@@ -39,9 +43,33 @@ export const useArchiveScanner = (
     allProfilePics: [],
   });
 
+  /**
+   * Blob URLs minted for the archive currently in state. They stay alive as long
+   * as that archive is on screen and are released when it is torn down —
+   * otherwise every archive ever opened stays resident for the tab's lifetime.
+   */
+  const createdUrlsRef = useRef<string[]>([]);
+
+  const revokeCreatedUrls = useCallback(() => {
+    for (const url of createdUrlsRef.current) {
+      try { URL.revokeObjectURL(url); } catch { /* already gone */ }
+    }
+    createdUrlsRef.current = [];
+  }, []);
+
+  // Release the last archive's URLs when the app unmounts.
+  useEffect(() => revokeCreatedUrls, [revokeCreatedUrls]);
+
+  /** Hand ownership of an externally-minted blob URL to the scanner's cleanup. */
+  const registerUrl = useCallback((url: string) => {
+    createdUrlsRef.current.push(url);
+  }, []);
+
   const resetScannerState = useCallback(() => {
+    revokeCreatedUrls();
     setAllPosts([]);
     setAllStories([]);
+    setAllHighlights([]);
     setProfileMetadata({
       username: '',
       fullName: '',
@@ -52,7 +80,7 @@ export const useArchiveScanner = (
       profilePic: null,
       allProfilePics: [],
     });
-  }, []);
+  }, [revokeCreatedUrls]);
 
   const handleFiles = useCallback(async (files: ArchiveFile[], archiveContext?: ServerArchive) => {
     if (!files || files.length === 0) return;
@@ -65,6 +93,19 @@ export const useArchiveScanner = (
     
     console.log(`[Scanner] Starting scan of ${files.length} files...`);
     await new Promise(resolve => setTimeout(resolve, 100));
+
+    /**
+     * Mint a URL for a media file, remembering it if it needs revoking later.
+     * Synchronous and allocation-free: no file contents are read here.
+     */
+    const mintUrl = (file: ArchiveFile, mimeHint?: string) => {
+      const url = file.createObjectUrl(mimeHint);
+      if (file.revocable) createdUrlsRef.current.push(url);
+      return url;
+    };
+
+    /** Stable identity for a media file, used to rehydrate URLs after a reload. */
+    const mediaPath = (file: ArchiveFile) => file.webkitRelativePath || file.name;
 
     const parseXZFile = async (file: ArchiveFile) => {
       try {
@@ -100,8 +141,6 @@ export const useArchiveScanner = (
       let localFollowingCount = 0;
       let localProfilePic: string | null = null;
 
-      const exportRegex = /^(\d{4}-\d{2}-\d{2})_(.+?) - (.+?)(?: - (\d+))?(?: - (story))?\.(.+)$/;
-      const instaloaderRegex = /^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_UTC)(?:_(\d+))?(?:_(story))?\.(.+)$/;
       const checkIsStory = (obj: any): boolean => {
         if (!obj) return false;
         const typeName = obj.__typename || obj.typename || '';
@@ -140,15 +179,15 @@ export const useArchiveScanner = (
           continue;
         }
 
-        if (file.name.match(exportRegex)) format = 'export';
-        else if (file.name.match(instaloaderRegex)) format = 'instaloader';
+        if (EXPORT_RE.test(file.name)) format = 'export';
+        else if (INSTALOADER_RE.test(file.name)) format = 'instaloader';
+        // Highlight items match neither pattern, so a profile made up only of
+        // sidecar directories would otherwise never reach the filename parser.
+        else if (format === 'unknown' && file.source && file.source.kind !== 'posts') format = 'export';
 
         if (lowerName.includes('_profile_pic.jpg') || (currentUsername && lowerName === `${currentUsername.toLowerCase()}.jpg`)) {
           try {
-            const url = file.url || (await (async () => {
-              const blob = new Blob([await file.arrayBuffer()], { type: 'image/jpeg' });
-              return URL.createObjectURL(blob);
-            })());
+            const url = mintUrl(file, 'image/jpeg');
             discoveredProfilePics.push({ name: file.name, url });
             if (format === 'unknown' && lowerName.includes('_profile_pic.jpg')) format = 'instaloader';
           } catch(e) {}
@@ -205,10 +244,10 @@ export const useArchiveScanner = (
 
                 if (matchedFile) {
                   const type = isVideo(matchedFile.name) ? 'video' : 'image';
-                  const url = matchedFile.url || URL.createObjectURL(new Blob([await matchedFile.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
+                  const url = mintUrl(matchedFile, type === 'video' ? 'video/mp4' : 'image/jpeg');
                   const existingMedia = post.media!.find(media => media.index === mIdx + 1);
-                  if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, url, type, index: mIdx + 1, size: matchedFile!.size } : media); }
-                  else post.media!.push({ name: matchedFile.name, url, type, index: mIdx + 1, size: matchedFile.size });
+                  if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(media => media.index === mIdx + 1 ? { name: matchedFile!.name, path: mediaPath(matchedFile!), url, type, index: mIdx + 1, size: matchedFile!.size } : media); }
+                  else post.media!.push({ name: matchedFile.name, path: mediaPath(matchedFile), url, type, index: mIdx + 1, size: matchedFile.size });
                 }
               }
               if (post.media!.length > 0) postsMap.set(postId, post);
@@ -228,21 +267,25 @@ export const useArchiveScanner = (
           setScannedFilesLog(prev => [`Batch ${Math.floor(j_start/CHUNK_SIZE) + 1} processing...`, ...prev.slice(0, 19)]);
           for (let j = j_start; j < end; j++) {
             const file = files[j]; const lowerName = file.name.toLowerCase();
-            const expMatch = file.name.match(exportRegex);
-            const insMatch = file.name.match(instaloaderRegex);
-            if (!expMatch && !insMatch) continue;
+            const kind = file.source?.kind ?? 'posts';
+            const parsed = parseArchiveFilename(file.name, kind, file.mtime);
+            if (!parsed) continue;
 
-            let postId = '', date = '', user = currentUsername || 'archived_user', index = 1, ext = '', isStory = lowerName.includes('story') || file.webkitRelativePath.toLowerCase().includes('stories');
-            if (expMatch) {
-              const [_, dMatch, uMatch, pMatch, iStrMatch, sMatch, eMatch] = expMatch;
-              date = dMatch; user = uMatch; postId = pMatch; index = iStrMatch ? parseInt(iStrMatch, 10) : 1; if (sMatch) isStory = true; ext = eMatch;
-            } else if (insMatch) {
-              const [_, pMatch, iStrMatch, sMatch, eMatch] = insMatch;
-              postId = pMatch; date = pMatch.split('_')[0]; index = iStrMatch ? parseInt(iStrMatch, 10) : 1; if (sMatch) isStory = true; ext = eMatch;
-            }
+            const { date, index, ext } = parsed;
+            const user = parsed.username || currentUsername || 'archived_user';
+            let isStory = parsed.isStory
+              || lowerName.includes('story')
+              || file.webkitRelativePath.toLowerCase().includes('stories');
+
+            const postId = scopedPostId(parsed.postId, kind, file.source?.dir);
+            if (kind === 'stories') isStory = true;
+            if (kind === 'highlight') isStory = false;
 
             let post = postsMap.get(postId);
-            if (!post) { post = { id: postId, date, username: user, caption: '', media: [], isStory }; postsMap.set(postId, post); }
+            if (!post) {
+              post = { id: postId, date, username: user, caption: '', media: [], isStory, source: kind, highlightTitle: file.source?.title };
+              postsMap.set(postId, post);
+            }
             else if (isStory) post.isStory = true;
 
             const lowerExt = ext.toLowerCase();
@@ -260,11 +303,11 @@ export const useArchiveScanner = (
               } catch (e) {}
             } else if (isMedia(file.name)) {
               const type = isVideo(file.name) ? 'video' : 'image';
-              const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
+              const url = mintUrl(file, type === 'video' ? 'video/mp4' : 'image/jpeg');
               if (type === 'image') throttledSetScanningImage(url);
               const existingMedia = post.media!.find(m => m.index === index);
-              if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(m => m.index === index ? { name: file.name, url, type, index, size: file.size } : m); }
-              else post.media!.push({ name: file.name, url, type, index, size: file.size });
+              if (existingMedia) { if (type === 'video' && existingMedia.type === 'image') post.media = post.media!.map(m => m.index === index ? { name: file.name, path: mediaPath(file), url, type, index, size: file.size } : m); }
+              else post.media!.push({ name: file.name, path: mediaPath(file), url, type, index, size: file.size });
             }
           }
           await new Promise(resolve => setTimeout(resolve, 0));
@@ -307,9 +350,9 @@ export const useArchiveScanner = (
             const post: Post = { id: postId, date: new Date().toISOString().split('T')[0], username: currentUsername || 'archived_user', caption: baseName, media: [], thumbnail: '' };
             for (const [idx, file] of batch.entries()) {
               const type = isVideo(file.name) ? 'video' : 'image';
-              const url = file.url || URL.createObjectURL(new Blob([await file.arrayBuffer()], { type: type === 'video' ? 'video/mp4' : 'image/jpeg' }));
+              const url = mintUrl(file, type === 'video' ? 'video/mp4' : 'image/jpeg');
               if (type === 'image') throttledSetScanningImage(url);
-              post.media.push({ name: file.name, url, type, index: idx + 1, size: file.size });
+              post.media.push({ name: file.name, path: mediaPath(file), url, type, index: idx + 1, size: file.size });
             }
             post.thumbnail = post.media[0].url;
             postsMap.set(postId, post);
@@ -327,7 +370,7 @@ export const useArchiveScanner = (
         allImageFiles.sort((a, b) => a.name.localeCompare(b.name));
         const oldestFile = allImageFiles[0];
         try {
-          const url = oldestFile.url || URL.createObjectURL(new Blob([await oldestFile.arrayBuffer()], { type: 'image/jpeg' }));
+          const url = mintUrl(oldestFile, 'image/jpeg');
           localProfilePic = url;
           setProfileMetadata(prev => ({ ...prev, profilePic: localProfilePic, allProfilePics: [url] }));
         } catch(e) {}
@@ -339,11 +382,17 @@ export const useArchiveScanner = (
         return { ...p, username: (p.username === 'archived_user' || !p.username) ? finalUsername : p.username, media: sortedMedia, thumbnail: sortedMedia[0].url } as Post;
       });
 
-      const posts = allItems.filter(p => !p.isStory).sort((a, b) => b.date.localeCompare(a.date));
-      const stories = allItems.filter(p => p.isStory).sort((a, b) => b.date.localeCompare(a.date)); // Fixed bug here
+      const byNewest = (a: Post, b: Post) => b.date.localeCompare(a.date);
+      // Highlights are story-shaped but live behind their own circles, so they
+      // are kept out of both the grid and the profile-ring story reel.
+      const highlights = allItems.filter(p => p.source === 'highlight').sort(byNewest);
+      const rest = allItems.filter(p => p.source !== 'highlight');
+      const posts = rest.filter(p => !p.isStory).sort(byNewest);
+      const stories = rest.filter(p => p.isStory).sort(byNewest);
 
       setAllPosts(posts);
       setAllStories(stories);
+      setAllHighlights(highlights);
       setProfileMetadata(prev => ({
         ...prev,
         username: finalUsername,
@@ -377,24 +426,30 @@ export const useArchiveScanner = (
           } catch (e) {}
         }
 
-        const cacheData = { 
-          name: cacheKey, isLocal, fileCount: archiveToCache ? archiveToCache.fileCount : files.length, 
-          posts: posts, // Enable caching for local archives
+        const cacheData: CacheData = {
+          name: cacheKey, isLocal,
+          fileCount: (archiveToCache ? archiveToCache.fileCount : files.length) ?? files.length,
+          signature: archiveToCache?.signature,
+          posts: posts,
           stories: stories,
-          profileMetadata: { 
-            username: finalUsername, 
-            fullName: localFullName, 
-            bio: localBio, 
-            followerCount: localFollowerCount, 
-            followingCount: localFollowingCount, 
-            externalUrl: localExternalUrl, 
+          highlights: highlights,
+          profileMetadata: {
+            username: finalUsername,
+            fullName: localFullName,
+            bio: localBio,
+            followerCount: localFollowerCount,
+            followingCount: localFollowingCount,
+            externalUrl: localExternalUrl,
+            // Local blob: URLs die with the document, so persist a data: URL for
+            // the dashboard card instead. Media URLs are rehydrated from `path`.
             profilePic: isLocal ? cacheThumbnail : localProfilePic,
             allProfilePics: isLocal ? (cacheThumbnail ? [cacheThumbnail] : []) : discoveredProfilePics.map(p => p.url)
-          }, 
-          timestamp: Date.now() 
+          },
+          hasDirectoryHandle: isLocal ? await hasDirectoryHandle(cacheKey) : false,
+          timestamp: Date.now()
         };
         try {
-          await idb.set(cacheKey, cacheData);
+          await setCachedArchive(cacheData);
           console.log(`[Cache] Data saved successfully.`);
           await refreshCachedArchives();
         } catch (e) { console.error(`[Cache] Save error:`, e); }
@@ -411,10 +466,12 @@ export const useArchiveScanner = (
     currentScanningImage,
     allPosts,
     allStories,
+    allHighlights,
     profileMetadata,
     handleFiles,
     setAllPosts,
     setAllStories,
+    setAllHighlights,
     setProfileMetadata,
     setIsScanning,
     setScanningPhase,
@@ -422,6 +479,7 @@ export const useArchiveScanner = (
     setTotalFiles,
     setScannedFilesLog,
     setCurrentScanningImage,
-    resetScannerState
+    resetScannerState,
+    registerUrl
   };
 };

@@ -7,34 +7,39 @@ import {
   X 
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { format, parseISO } from 'date-fns';
 import { Post } from '../types';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafe } from '../lib/utils';
 
 interface StoryViewerProps {
   stories: Post[];
   onClose: () => void;
   profilePic: string | null;
+  /** Highlight name, shown in place of the date when viewing a highlight. */
+  title?: string;
 }
 
-export const StoryViewer: React.FC<StoryViewerProps> = ({ 
-  stories, 
+export const StoryViewer: React.FC<StoryViewerProps> = ({
+  stories,
   onClose,
-  profilePic
+  profilePic,
+  title
 }) => {
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
+  // Start muted: Safari and Firefox refuse to autoplay audible media, which
+  // would stall the reel on its first video.
+  const [isMuted, setIsMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
   const story = stories[currentStoryIndex];
+  const primary = story?.media?.[0];
 
   useEffect(() => {
     setProgress(0);
     let duration = 5000;
     const interval = 50;
-    
+
     const updateProgress = () => {
-      if (story.media[0].type === 'video' && videoRef.current) {
+      if (primary?.type === 'video' && videoRef.current) {
         const currentTime = videoRef.current.currentTime;
         const totalTime = videoRef.current.duration;
         if (totalTime) {
@@ -54,7 +59,7 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
     }, interval);
 
     return () => clearInterval(timer);
-  }, [currentStoryIndex, story.media]);
+  }, [currentStoryIndex, primary]);
 
   useEffect(() => {
     if (progress >= 100) {
@@ -80,6 +85,9 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
     }
   };
 
+  // An empty or exhausted reel has nothing to show; bail before dereferencing.
+  if (!story || !primary) return null;
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -90,8 +98,8 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
     >
       <div className="absolute inset-0 z-0 text-white">
         <img 
-          src={story.media[0].url} 
-          alt="" 
+          src={primary.url}
+          alt=""
           className="w-full h-full object-cover blur-3xl opacity-30"
         />
       </div>
@@ -146,12 +154,13 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
             </div>
             <div className="flex items-center gap-2 text-white">
               <span className="text-xs font-semibold">{story.username}</span>
-              <span className="text-[10px] opacity-60 font-medium">{format(parseISO(story.date), 'MMM d')}</span>
+              {title && <span className="text-[10px] opacity-80 font-medium truncate max-w-[120px]">{title}</span>}
+              <span className="text-[10px] opacity-60 font-medium">{formatDateSafe(story.date, 'MMM d')}</span>
             </div>
           </div>
           
           <div className="flex items-center gap-1 text-white">
-            {story.media[0].type === 'video' && (
+            {primary.type === 'video' && (
               <button 
                 onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
                 className="p-2 hover:bg-white/10 rounded-full transition-colors text-white"
@@ -166,10 +175,10 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
         </div>
 
         <div className="w-full h-full flex items-center justify-center pointer-events-none text-white">
-          {story.media[0].type === 'video' ? (
+          {primary.type === 'video' ? (
             <video 
               ref={videoRef}
-              src={story.media[0].url} 
+              src={primary.url}
               className="w-full h-full object-contain"
               autoPlay 
               muted={isMuted}
@@ -179,8 +188,8 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
             />
           ) : (
             <img 
-              src={story.media[0].url} 
-              alt="" 
+              src={primary.url}
+              alt=""
               className="w-full h-full object-contain"
               referrerPolicy="no-referrer"
             />

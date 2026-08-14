@@ -4,7 +4,8 @@ import { MediaFile } from '../types';
 import { cn } from '../lib/utils';
 
 export const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; className?: string; isFullView?: boolean }) => {
-  const [isMuted, setIsMuted] = useState(false);
+  // Start muted so autoplay is not blocked by Safari/Firefox policy.
+  const [isMuted, setIsMuted] = useState(true);
   const sizingClass = isFullView ? "w-full h-auto block" : "w-full h-full object-cover";
   const mediaStyle = { transform: 'translateZ(0)' };
 

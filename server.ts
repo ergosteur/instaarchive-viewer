@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import os from 'os';
+import { ArchiveIndex } from './src/lib/archive-index.js';
 
 dotenv.config();
 
@@ -31,56 +32,85 @@ if (!fs.existsSync(ARCHIVES_DIR)) {
   console.log(`[Server] Archives directory exists.`);
 }
 
+const INDEX_PATH = process.env.ARCHIVE_INDEX_PATH
+  || path.join(process.env.CACHE_DIR || os.tmpdir(), 'instaarchive-index.json');
+const index = new ArchiveIndex(ARCHIVES_DIR, INDEX_PATH);
+
+// Warm in the background: the first walk of a large archive root is slow, but
+// everything after it is served from directory-mtime-keyed cache.
+index.load()
+  .then(() => index.warm())
+  .catch(err => console.error('[Index] Warm failed:', err));
+
+// Don't advertise the framework.
+app.disable('x-powered-by');
+
+/**
+ * Baseline security headers.
+ *
+ * The CSP allows blob: and data: because archive media is rendered from object
+ * URLs and cached thumbnails, and 'unsafe-inline' for styles because the
+ * animation library sets inline styles. Scripts stay restricted to same-origin,
+ * and no third-party origins are permitted at all — the app bundles its own
+ * fonts and icons.
+ */
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), interest-cohort=()');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "img-src 'self' blob: data:",
+    "media-src 'self' blob: data:",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "frame-ancestors 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '));
+  next();
+});
+
 app.use(express.json());
 
-// API: List archives (subdirectories in ARCHIVES_DIR)
+/**
+ * Resolve a user-supplied archive name to an absolute path inside ARCHIVES_DIR.
+ *
+ * Express decodes route params *after* segment matching, so a name like
+ * `..%2f..%2fetc` arrives here as `../../etc` and would otherwise escape the
+ * archives root. Returns null for anything that resolves outside it.
+ */
+const resolveArchivePath = (archiveName: string): string | null => {
+  if (!archiveName || archiveName.includes('\0')) return null;
+  const resolved = path.resolve(ARCHIVES_DIR, archiveName);
+  if (resolved !== ARCHIVES_DIR && !resolved.startsWith(ARCHIVES_DIR + path.sep)) {
+    console.warn(`[Security] Rejected archive name escaping ARCHIVES_DIR: ${archiveName}`);
+    return null;
+  }
+  return resolved;
+};
+
+// API: List archives, grouped by profile. Costs one stat per source directory.
 app.get('/api/archives', (req, res) => {
   try {
-    console.log(`[API] Listing archives from ${ARCHIVES_DIR}...`);
-    const items = fs.readdirSync(ARCHIVES_DIR, { withFileTypes: true });
-    console.log(`[API] Found ${items.length} total items in archives directory.`);
-    
-    const archives = items
-      .filter(item => {
-        const isDir = item.isDirectory();
-        const isHidden = item.name.startsWith('.') || item.name.startsWith('@') || item.name.startsWith('_');
-        if (!isDir) return false;
-        if (isHidden) {
-          console.log(`[API] Skipping system/hidden directory: ${item.name}`);
-          return false;
-        }
-        return true;
-      })
-      .map(item => {
-        // Try to find a profile pic or first image for the thumbnail
-        const archivePath = path.join(ARCHIVES_DIR, item.name);
-        try {
-          const files = fs.readdirSync(archivePath);
-          console.log(`[API] Found archive: ${item.name} (${files.length} files)`);
-          
-          let thumbnail = '';
-          const profilePic = files.find(f => f.toLowerCase().includes('_profile_pic.jpg') || f.toLowerCase() === `${item.name.toLowerCase()}.jpg`);
-          if (profilePic) {
-            thumbnail = `/archives/${item.name}/${profilePic}`;
-          } else {
-            const firstImage = files.find(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
-            if (firstImage) thumbnail = `/archives/${item.name}/${firstImage}`;
-          }
-
-          return {
-            name: item.name,
-            thumbnail,
-            path: item.name,
-            fileCount: files.length
-          };
-        } catch (e) {
-          console.error(`[API] Could not read subdirectory ${item.name}:`, e);
-          return null;
-        }
-      })
-      .filter(Boolean);
-    
-    console.log(`[API] Returning ${archives.length} validated archives.`);
+    const groups = index.groups();
+    const archives = Array.from(groups.entries()).map(([owner, sources]) => ({
+      name: owner,
+      thumbnail: index.thumbnailFor(owner, sources),
+      path: owner,
+      // Null until that profile has been indexed; the client treats it as unknown.
+      fileCount: index.countFor(sources),
+      // Directory mtimes: cheap to compute and enough to invalidate a stale cache.
+      signature: index.signatureFor(sources),
+      sources,
+    }));
+    console.log(`[API] Returning ${archives.length} archives.`);
     res.json(archives);
   } catch (err: any) {
     if (err.code === 'EACCES') {
@@ -93,33 +123,26 @@ app.get('/api/archives', (req, res) => {
   }
 });
 
-// API: List all files in an archive (recursive)
-app.get('/api/archives/:name/files', (req, res) => {
+/**
+ * List every file belonging to a profile, across its base and sidecar dirs.
+ *
+ * Paths are relative to ARCHIVES_DIR (so they include the source directory) and
+ * each entry carries its source kind, letting the client route posts, reels,
+ * stories and highlights without re-deriving the naming rules.
+ *
+ * Served from the directory index; only a directory whose mtime changed is
+ * re-walked.
+ */
+app.get('/api/archives/:name/files', async (req, res) => {
   const archiveName = req.params.name;
-  const archivePath = path.join(ARCHIVES_DIR, archiveName);
-
-  if (!fs.existsSync(archivePath)) {
-    return res.status(404).json({ error: 'Archive not found' });
+  if (!resolveArchivePath(archiveName)) {
+    return res.status(400).json({ error: 'Invalid archive name' });
   }
 
   try {
-    const walk = (dir: string, base: string = ''): string[] => {
-      let results: string[] = [];
-      const list = fs.readdirSync(dir);
-      list.forEach(file => {
-        const filePath = path.join(dir, file);
-        const relativePath = path.join(base, file);
-        const stat = fs.statSync(filePath);
-        if (stat && stat.isDirectory()) {
-          results = results.concat(walk(filePath, relativePath));
-        } else {
-          results.push(relativePath);
-        }
-      });
-      return results;
-    };
-
-    const files = walk(archivePath);
+    const files = await index.filesFor(archiveName);
+    if (!files) return res.status(404).json({ error: 'Archive not found' });
+    void index.save();
     res.json(files);
   } catch (err) {
     console.error('Error listing files:', err);
@@ -127,8 +150,14 @@ app.get('/api/archives/:name/files', (req, res) => {
   }
 });
 
-// Serve archive files
-app.use('/archives', express.static(ARCHIVES_DIR));
+// Serve archive files. Archive contents are immutable in practice, so cache
+// them aggressively; the client busts its own cache via fileCount.
+app.use('/archives', express.static(ARCHIVES_DIR, {
+  maxAge: '1y',
+  immutable: true,
+  index: false,
+  dotfiles: 'ignore',
+}));
 
 // Serve production frontend
 const distPath = path.join(__dirname, 'dist');

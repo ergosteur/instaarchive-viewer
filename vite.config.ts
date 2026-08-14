@@ -1,11 +1,10 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig} from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+export default defineConfig(() => {
   return {
     plugins: [
       react(), 
@@ -21,13 +20,13 @@ export default defineConfig(({mode}) => {
           display: 'standalone',
           icons: [
             {
-              src: 'https://cdn-icons-png.flaticon.com/512/174/174855.png',
+              src: '/icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any maskable'
             },
             {
-              src: 'https://cdn-icons-png.flaticon.com/192/174/174855.png',
+              src: '/icon-192.png',
               sizes: '192x192',
               type: 'image/png'
             }
@@ -35,29 +34,12 @@ export default defineConfig(({mode}) => {
         },
         workbox: {
           navigateFallbackDenylist: [/^\/api/, /^\/archives/],
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'google-fonts-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            }
-          ]
+          // Fonts and icons are bundled locally, so everything the shell needs
+          // is precached and no runtime third-party caching rule is required.
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}']
         }
       })
     ],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
