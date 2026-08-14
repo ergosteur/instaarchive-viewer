@@ -80,10 +80,16 @@ app.use((req, res, next) => {
     "default-src 'self'",
     "img-src 'self' blob: data:",
     "media-src 'self' blob: data:",
-    "script-src 'self'",
+    // 'wasm-unsafe-eval' permits WebAssembly compilation without allowing
+    // eval() of JavaScript. The xz decompressor used for Instaloader's
+    // .json.xz sidecars is WebAssembly, embedded as a data: URL it fetches at
+    // startup — so connect-src must allow data: too. Without both, decoding
+    // fails with a bare "TypeError: Failed to fetch" and every archive silently
+    // loses its captions, story flags and profile metadata.
+    "script-src 'self' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' data:",
     "worker-src 'self' blob:",
     "frame-ancestors 'self'",
     "object-src 'none'",
