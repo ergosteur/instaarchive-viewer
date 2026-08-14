@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Post } from '../types';
 import { cn, formatDateSafe } from '../lib/utils';
+import { FADE, NAVIGATE, PRESENT, prefersReducedMotion, withVelocity } from '../lib/motion';
 import { MediaRenderer } from './MediaRenderer';
 
 interface PostModalProps {
@@ -30,7 +31,14 @@ export const PostModal: React.FC<PostModalProps> = ({
   post, nextPost, prevPost, onClose, onNextPost, onPrevPost, hasNextPost, hasPrevPost, profilePic
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [direction, setDirection] = useState(0);
+  /**
+   * How the next slide/post should enter: along which axis, in which direction,
+   * and carrying how much velocity from the gesture that triggered it.
+   */
+  const [slideMotion, setSlideMotion] = useState<{ axis: 'x' | 'y'; dir: number; velocity: number }>(
+    { axis: 'x', dir: 0, velocity: 0 },
+  );
+  const reduceMotion = prefersReducedMotion();
 
   // Preloading Logic
   useEffect(() => {
@@ -75,8 +83,8 @@ export const PostModal: React.FC<PostModalProps> = ({
   useEffect(() => setCurrentIndex(0), [post.id]);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') onNextPost?.();
-      else if (e.key === 'ArrowLeft') onPrevPost?.();
+      if (e.key === 'ArrowRight') goToPost(1, 'x');
+      else if (e.key === 'ArrowLeft') goToPost(-1, 'x');
       else if (e.key === '.') paginate(1);
       else if (e.key === ',') paginate(-1);
       else if (e.key === 'Escape') onClose();
@@ -85,17 +93,78 @@ export const PostModal: React.FC<PostModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onNextPost, onPrevPost, currentIndex, post.media.length, onClose]);
 
-  const paginate = (newDirection: number) => {
+  const paginate = (newDirection: number, velocity = 0) => {
     const nextIndex = currentIndex + newDirection;
-    if (nextIndex >= 0 && nextIndex < post.media.length) { setDirection(newDirection); setCurrentIndex(nextIndex); }
+    if (nextIndex >= 0 && nextIndex < post.media.length) {
+      setSlideMotion({ axis: 'x', dir: newDirection, velocity });
+      setCurrentIndex(nextIndex);
+    }
   };
 
-  const variants = { 
-    enter: (d: number) => ({ x: d > 0 ? '100%' : '-100%', opacity: 1, zIndex: 0 }), 
-    center: { zIndex: 1, x: 0, opacity: 1 }, 
-    exit: (d: number) => ({ zIndex: 0, x: d < 0 ? '100%' : '-100%', opacity: 1 }) 
+  /**
+   * Move between posts, animating along the axis the input implies: vertical
+   * for a touch swipe, horizontal for the desktop arrows and arrow keys.
+   */
+  const goToPost = (dir: 1 | -1, axis: 'x' | 'y', velocity = 0) => {
+    if (dir > 0 ? !hasNextPost : !hasPrevPost) return;
+    setSlideMotion({ axis, dir, velocity });
+    if (dir > 0) onNextPost?.(); else onPrevPost?.();
+  };
+
+  type SlideMotion = { axis: 'x' | 'y'; dir: number };
+  const offscreen = (dir: number) => (dir > 0 ? '100%' : '-100%');
+  const variants = {
+    enter: ({ axis, dir }: SlideMotion) =>
+      axis === 'y'
+        ? { y: offscreen(dir), x: 0, opacity: 1, zIndex: 0 }
+        : { x: offscreen(dir), y: 0, opacity: 1, zIndex: 0 },
+    center: { zIndex: 1, x: 0, y: 0, opacity: 1 },
+    exit: ({ axis, dir }: SlideMotion) =>
+      axis === 'y'
+        ? { zIndex: 0, y: offscreen(-dir), x: 0, opacity: 1 }
+        : { zIndex: 0, x: offscreen(-dir), y: 0, opacity: 1 },
   };
   const swipePower = (offset: number, velocity: number) => Math.abs(offset) * velocity;
+
+  /** Gesture navigation is touch-shaped below md; above it the arrows do the job. */
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  /**
+   * Vertical swipe moves between posts on touch, matching Instagram: horizontal
+   * belongs to the carousel and only the carousel, so reaching the last slide
+   * no longer flings you into the next post.
+   *
+   * Swiping down on the first post falls back to dismissing, which keeps the
+   * familiar drag-to-close gesture available where it can't mean "previous".
+   */
+  const SWIPE_DISTANCE = 90;
+  const SWIPE_POWER = 8000;
+
+  const handleVerticalDragEnd = (offset: { y: number }, velocity: { y: number }) => {
+    const power = swipePower(offset.y, velocity.y);
+
+    if (!isMobile) {
+      if (offset.y > 200 || velocity.y > 800) onClose();
+      return;
+    }
+
+    const swipedUp = offset.y < -SWIPE_DISTANCE || power < -SWIPE_POWER;
+    const swipedDown = offset.y > SWIPE_DISTANCE || power > SWIPE_POWER;
+
+    if (swipedUp && hasNextPost) goToPost(1, 'y', velocity.y);
+    else if (swipedDown) {
+      if (hasPrevPost) goToPost(-1, 'y', velocity.y);
+      else onClose();
+    }
+  };
 
   /*
    * Horizontal padding on the overlay reserves a gutter for the prev/next
@@ -107,32 +176,37 @@ export const PostModal: React.FC<PostModalProps> = ({
    * post grid behind the overlay.
    */
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-start justify-center bg-[#0c1014]/95 md:bg-[#0c1014]/70 p-0 md:py-10 md:px-16 lg:px-24 overflow-y-auto overscroll-contain text-black" onClick={onClose}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={FADE} className="fixed inset-0 z-50 flex items-start justify-center bg-[#0c1014]/95 md:bg-[#0c1014]/70 p-0 md:py-10 md:px-16 lg:px-24 overflow-y-auto overscroll-contain text-black" onClick={onClose}>
       <div className="min-h-full w-full flex items-center justify-center md:py-0">
         <button onClick={onClose} className="fixed top-4 right-4 text-white hover:text-gray-300 z-50 p-2 md:p-3 bg-black/20 rounded-full backdrop-blur-sm"><X size={24} className="md:w-8 md:h-8" /></button>
         {/* Solid pill so the arrows read against whatever sits behind them. */}
-        {hasPrevPost && onPrevPost && <button aria-label="Previous post" onClick={(e) => { e.stopPropagation(); onPrevPost(); }} className="hidden md:flex items-center justify-center fixed md:left-3 lg:left-6 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-lg transition-transform hover:scale-110 active:scale-90"><ChevronLeft size={28} strokeWidth={2} /></button>}
-        {hasNextPost && onNextPost && <button aria-label="Next post" onClick={(e) => { e.stopPropagation(); onNextPost(); }} className="hidden md:flex items-center justify-center fixed md:right-3 lg:right-6 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-lg transition-transform hover:scale-110 active:scale-90"><ChevronRight size={28} strokeWidth={2} /></button>}
-        <motion.div drag="y" dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.15} onDragEnd={(e, { offset, velocity }) => { if (offset.y > 200 || velocity.y > 800) onClose(); }} className="bg-black flex flex-col md:flex-row w-full max-w-6xl h-auto md:rounded-sm overflow-hidden shadow-2xl relative text-black" onClick={e => e.stopPropagation()}>
+        {hasPrevPost && onPrevPost && <button aria-label="Previous post" onClick={(e) => { e.stopPropagation(); goToPost(-1, 'x'); }} className="hidden md:flex items-center justify-center fixed md:left-3 lg:left-6 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-lg transition-transform hover:scale-110 active:scale-90"><ChevronLeft size={28} strokeWidth={2} /></button>}
+        {hasNextPost && onNextPost && <button aria-label="Next post" onClick={(e) => { e.stopPropagation(); goToPost(1, 'x'); }} className="hidden md:flex items-center justify-center fixed md:right-3 lg:right-6 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-lg transition-transform hover:scale-110 active:scale-90"><ChevronRight size={28} strokeWidth={2} /></button>}
+        <motion.div drag="y" dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={0.15} onDragEnd={(e, { offset, velocity }) => handleVerticalDragEnd(offset, velocity)} initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }} transition={PRESENT} className="bg-black flex flex-col md:flex-row w-full max-w-6xl h-auto md:rounded-sm overflow-hidden shadow-2xl relative text-black" onClick={e => e.stopPropagation()}>
           <div className="relative bg-black flex items-center justify-center group overflow-hidden w-full h-auto text-black">
             <div className="w-full grid grid-cols-1 grid-rows-1 text-black">
-              <AnimatePresence initial={false} custom={direction}>
-                <motion.div 
-                  key={`${post.id}-${currentIndex}`} 
-                  custom={direction} 
-                  variants={variants} 
-                  initial="enter" 
-                  animate="center" 
-                  exit="exit" 
-                  transition={{ x: { type: "spring", stiffness: 200, damping: 26, bounce: 0 } }} 
+              <AnimatePresence initial={false} custom={slideMotion}>
+                <motion.div
+                  key={`${post.id}-${currentIndex}`}
+                  custom={slideMotion}
+                  variants={variants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={reduceMotion
+                    ? { duration: 0 }
+                    : { x: withVelocity(slideMotion.velocity, NAVIGATE), y: withVelocity(slideMotion.velocity, NAVIGATE) }}
+                  
                   drag="x" 
                   dragDirectionLock 
                   dragConstraints={{ left: 0, right: 0 }} 
                   dragElastic={0.5} 
                   onDragEnd={(e, { offset, velocity }) => {
+                    // Carousel only. Crossing into the next post from the last
+                    // slide made a horizontal flick mean two different things.
                     const s = swipePower(offset.x, velocity.x);
-                    if (s < -15000) { if (currentIndex < post.media.length - 1) paginate(1); else if (hasNextPost && onNextPost && s < -40000) onNextPost(); }
-                    else if (s > 15000) { if (currentIndex > 0) paginate(-1); else if (hasPrevPost && onPrevPost && s > 40000) onPrevPost(); }
+                    if (s < -15000) paginate(1, velocity.x);
+                    else if (s > 15000) paginate(-1, velocity.x);
                   }} 
                   className="col-start-1 row-start-1 w-full flex items-center justify-center cursor-grab active:cursor-grabbing relative text-black"
                 >

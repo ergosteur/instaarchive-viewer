@@ -17,6 +17,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 import { cn } from './lib/utils';
+import { PRESS } from './lib/motion';
+import { buildPath, findPostBySlug, parseRoute, postSlug, tabForSource } from './lib/routing';
 import { LocalArchiveFile, RemoteArchiveFile } from './lib/archive-files';
 import {
   deleteCachedArchive,
@@ -60,13 +62,13 @@ export default function App() {
   const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
 
   /**
-   * The query string as it was when the app booted.
+   * The route as it was when the app booted.
    *
    * Captured during the first render because the URL is rewritten from app
    * state as soon as anything loads; reading `window.location` later would see
    * the rewritten value rather than the link the user actually followed.
    */
-  const initialParamsRef = useRef(new URLSearchParams(window.location.search));
+  const initialRouteRef = useRef(parseRoute(window.location.pathname, window.location.search));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profilePicInputRef = useRef<HTMLInputElement>(null);
@@ -339,41 +341,28 @@ export default function App() {
     // loader below is waiting to read.
     if (!hasInitialLoaded) return;
 
-    const params = new URLSearchParams(window.location.search);
-    if (currentArchive) params.set('a', currentArchive.name);
-    else if (allPosts.length > 0 && username) params.set('a', username);
-    else params.delete('a');
+    const archive = currentArchive?.name ?? (allPosts.length > 0 ? username : null) ?? null;
+    const nextPath = buildPath({
+      archive,
+      tab: activeTab,
+      post: selectedPost ? postSlug(selectedPost) : null,
+    });
 
-    if (activeTab !== 'posts') params.set('t', activeTab);
-    else params.delete('t');
-
-    if (selectedPost) params.set('p', selectedPost.id);
-    else params.delete('p');
-
-    const newSearch = params.toString();
-    const currentSearch = new URLSearchParams(window.location.search).toString();
-    if (newSearch !== currentSearch) {
-      console.log(`[Permalink] Updating URL to: ?${newSearch}`);
-      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
-      window.history.replaceState(null, '', newUrl);
+    if (nextPath !== window.location.pathname + window.location.search) {
+      console.log(`[Permalink] Updating URL to: ${nextPath}`);
+      window.history.replaceState(null, '', nextPath);
     }
   }, [hasInitialLoaded, currentArchive?.name, username, allPosts.length, activeTab, selectedPost?.id]);
 
   useEffect(() => {
     if (hasInitialLoaded) return;
 
-    const params = initialParamsRef.current;
-    const archiveName = params.get('a');
-    const tab = params.get('t');
-    console.log('[Permalink] Initial read from URL:', {
-      archiveName, tab, postId: params.get('p'),
-    });
+    const route = initialRouteRef.current;
+    console.log('[Permalink] Initial route:', route);
 
-    if (tab && ['posts', 'reels', 'saved'].includes(tab)) {
-      setActiveTab(tab as 'posts' | 'reels' | 'saved');
-    }
+    if (route.tab !== 'posts') setActiveTab(route.tab);
 
-    if (!archiveName) {
+    if (!route.archive) {
       setHasInitialLoaded(true);
       return;
     }
@@ -381,12 +370,12 @@ export default function App() {
     // Wait for the archive list before deciding the link is unresolvable.
     if (!archivesFetched) return;
 
-    const archive = serverArchives.find(a => a.name === archiveName);
+    const archive = serverArchives.find(a => a.name === route.archive);
     if (archive) {
-      console.log(`[Permalink] Auto-loading archive: ?a=${archiveName}`);
+      console.log(`[Permalink] Auto-loading archive: ${route.archive}`);
       loadServerArchive(archive);
     } else {
-      console.warn(`[Permalink] No archive named "${archiveName}".`);
+      console.warn(`[Permalink] No archive named "${route.archive}".`);
     }
     setHasInitialLoaded(true);
   }, [serverArchives, archivesFetched, hasInitialLoaded, loadServerArchive]);
@@ -406,10 +395,14 @@ export default function App() {
     if (appliedPostParamRef.current === archiveKey) return;
     appliedPostParamRef.current = archiveKey;
 
-    const postId = initialParamsRef.current.get('p');
-    if (!postId) return;
-    const post = allPosts.find(p => p.id === postId);
-    if (post) setSelectedPost(post);
+    const slug = initialRouteRef.current.post;
+    if (!slug) return;
+    const post = findPostBySlug(allPosts, slug);
+    if (!post) return;
+    // A /p/<code>/ link carries no tab, so derive the one that contains it —
+    // otherwise next/prev would page through the wrong list.
+    setActiveTab(tabForSource(post.source));
+    setSelectedPost(post);
   }, [allPosts, currentArchive?.name, username]);
 
   return (
@@ -504,9 +497,11 @@ export default function App() {
             {highlightGroups.length > 0 && (
               <div className="flex gap-6 md:gap-8 overflow-x-auto scrollbar-hide px-4 pb-2">
                 {highlightGroups.map(group => (
-                  <button
+                  <motion.button
                     key={group.title}
                     onClick={() => setActiveHighlight(group.title)}
+                    whileTap={{ scale: 0.94 }}
+                    transition={PRESS}
                     className="flex flex-col items-center gap-2 shrink-0 group/hl"
                     title={`${group.title} — ${group.items.length} item${group.items.length === 1 ? '' : 's'}`}
                   >
@@ -522,7 +517,7 @@ export default function App() {
                       </div>
                     </div>
                     <span className="text-[11px] max-w-[80px] truncate text-gray-700">{group.title}</span>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             )}
@@ -538,7 +533,7 @@ export default function App() {
             <div className="grid grid-cols-3 gap-[2px] md:gap-[2px] text-black">
               {activeTab === 'posts' && Array.from({ length: gridOffset }).map((_, i) => (<div key={`blank-${i}`} className={cn("bg-gray-100/50 border border-dashed border-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase tracking-tighter text-black", gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]")}>Blank</div>))}
               {visiblePosts.map((post) => (
-                <motion.div key={post.id} layoutId={post.id} onClick={() => setSelectedPost(post)} className={cn("relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300 text-black", activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"))}>
+                <motion.div key={post.id} layoutId={post.id} onClick={() => setSelectedPost(post)} whileTap={{ scale: 0.97 }} transition={PRESS} className={cn("relative group cursor-pointer overflow-hidden bg-gray-200 transition-all duration-300 text-black", activeTab === 'reels' ? "aspect-[9/16]" : (gridAspectRatio === '1:1' ? "aspect-square" : "aspect-[3/4]"))}>
                   <PostThumbnail 
                     post={post} 
                     thumbnailUrl={cacheHits.get(post.id)} 

@@ -9,6 +9,7 @@ import {
 import { motion } from 'motion/react';
 import { Post } from '../types';
 import { cn, formatDateSafe } from '../lib/utils';
+import { FADE, PRESENT, prefersReducedMotion } from '../lib/motion';
 
 interface StoryViewerProps {
   stories: Post[];
@@ -31,6 +32,7 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
   // the progress bar on the first video.
   const [isMuted, setIsMuted] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const reduceMotion = prefersReducedMotion();
   const story = stories[currentStoryIndex];
   const primary = story?.media?.[0];
 
@@ -106,10 +108,11 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
   if (!story || !primary) return null;
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={FADE}
       className="fixed inset-0 z-[100] bg-[#1a1a1a] flex items-center justify-center overflow-hidden text-white"
       onClick={onClose}
     >
@@ -138,7 +141,11 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
         <ChevronRight size={32} strokeWidth={1.5} />
       </button>
 
-      <div 
+      <motion.div
+        initial={reduceMotion ? false : { scale: 0.94, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={reduceMotion ? { opacity: 0 } : { scale: 0.94, opacity: 0 }}
+        transition={PRESENT}
         className="relative w-full h-full md:h-[90vh] md:max-w-[45vh] bg-black overflow-hidden md:rounded-lg shadow-2xl z-10 text-white"
         onClick={e => e.stopPropagation()}
       >
@@ -223,7 +230,7 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
             {story.caption}
           </div>
         )}
-      </div>
+      </motion.div>
     </motion.div>
   );
 };
