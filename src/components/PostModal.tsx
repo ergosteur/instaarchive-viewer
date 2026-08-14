@@ -126,44 +126,12 @@ export const PostModal: React.FC<PostModalProps> = ({
   };
   const swipePower = (offset: number, velocity: number) => Math.abs(offset) * velocity;
 
-  /** Gesture navigation is touch-shaped below md; above it the arrows do the job. */
-  const [isMobile, setIsMobile] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
-  );
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 767px)');
-    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
-
   /**
-   * Vertical swipe moves between posts on touch, matching Instagram: horizontal
-   * belongs to the carousel and only the carousel, so reaching the last slide
-   * no longer flings you into the next post.
-   *
-   * Swiping down on the first post falls back to dismissing, which keeps the
-   * familiar drag-to-close gesture available where it can't mean "previous".
+   * Desktop-only surface: mobile opens PostFeed instead, so the only vertical
+   * gesture left here is drag-to-dismiss.
    */
-  const SWIPE_DISTANCE = 90;
-  const SWIPE_POWER = 8000;
-
   const handleVerticalDragEnd = (offset: { y: number }, velocity: { y: number }) => {
-    const power = swipePower(offset.y, velocity.y);
-
-    if (!isMobile) {
-      if (offset.y > 200 || velocity.y > 800) onClose();
-      return;
-    }
-
-    const swipedUp = offset.y < -SWIPE_DISTANCE || power < -SWIPE_POWER;
-    const swipedDown = offset.y > SWIPE_DISTANCE || power > SWIPE_POWER;
-
-    if (swipedUp && hasNextPost) goToPost(1, 'y', velocity.y);
-    else if (swipedDown) {
-      if (hasPrevPost) goToPost(-1, 'y', velocity.y);
-      else onClose();
-    }
+    if (offset.y > 200 || velocity.y > 800) onClose();
   };
 
   /*

@@ -3,7 +3,25 @@ import { Play, Volume2, VolumeX } from 'lucide-react';
 import { MediaFile } from '../types';
 import { cn } from '../lib/utils';
 
-export const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile; className?: string; isFullView?: boolean }) => {
+interface MediaRendererProps {
+  file: MediaFile;
+  className?: string;
+  isFullView?: boolean;
+  /** Hold playback: the feed keeps every off-screen video paused. */
+  paused?: boolean;
+  /** Cap media height to this instead of the default full-view ceiling. */
+  heightCap?: string;
+  /**
+   * Size video to the container width rather than its own intrinsic size.
+   *
+   * A <video> reports 300x150 until metadata loads, so `w-auto` makes it render
+   * narrow and then jump to full width. The feed needs a stable width more than
+   * it needs a snug fit.
+   */
+  fillWidth?: boolean;
+}
+
+export const MediaRenderer = ({ file, className, isFullView, paused, heightCap, fillWidth }: MediaRendererProps) => {
   // Try to play with sound: opening the modal is a user gesture, so browsers
   // generally allow it. If this particular browser still refuses, the effect
   // below falls back to muted playback rather than leaving a stalled video.
@@ -13,6 +31,11 @@ export const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile
   useEffect(() => {
     const video = videoRef.current;
     if (!video || file.type !== 'video') return;
+
+    if (paused) {
+      video.pause();
+      return;
+    }
 
     let cancelled = false;
     video.muted = false;
@@ -24,7 +47,7 @@ export const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile
     });
 
     return () => { cancelled = true; };
-  }, [file.url, file.type]);
+  }, [file.url, file.type, paused]);
   /**
    * In full view the media must never outgrow the viewport.
    *
@@ -36,8 +59,11 @@ export const MediaRenderer = ({ file, className, isFullView }: { file: MediaFile
    * The desktop cap subtracts the modal's own padding (md:p-10 = 2.5rem each
    * side); mobile leaves room for the caption panel stacked underneath.
    */
-  const fullViewCap = "max-h-[70vh] md:max-h-[calc(100vh-5rem)] object-contain";
-  const videoSizing = isFullView ? `block w-auto max-w-full ${fullViewCap}` : "w-full h-full object-cover";
+  const fullViewCap = `${heightCap ?? 'max-h-[70vh] md:max-h-[calc(100vh-5rem)]'} object-contain`;
+  const videoFullView = fillWidth
+    ? `block w-full h-auto ${fullViewCap}`
+    : `block w-auto max-w-full ${fullViewCap}`;
+  const videoSizing = isFullView ? videoFullView : "w-full h-full object-cover";
   const imageSizing = isFullView ? `block w-full h-auto ${fullViewCap}` : "w-full h-full object-cover";
   const sizingClass = file.type === 'video' ? videoSizing : imageSizing;
   const mediaStyle = { transform: 'translateZ(0)' };

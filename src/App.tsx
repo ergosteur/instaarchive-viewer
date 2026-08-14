@@ -38,6 +38,8 @@ import { CacheData, Post, ServerArchive, ServerArchiveFile } from './types';
 import { ArchiveDashboard } from './components/ArchiveDashboard';
 import { StoryViewer } from './components/StoryViewer';
 import { PostModal } from './components/PostModal';
+import { PostFeed } from './components/PostFeed';
+import { useIsMobile } from './hooks/useIsMobile';
 import { PostThumbnail } from './components/PostThumbnail';
 import { useArchiveScanner } from './hooks/useArchiveScanner';
 import { useThumbnailQueue } from './hooks/useThumbnailQueue';
@@ -70,6 +72,7 @@ export default function App() {
    */
   const initialRouteRef = useRef(parseRoute(window.location.pathname, window.location.search));
 
+  const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const profilePicInputRef = useRef<HTMLInputElement>(null);
 
@@ -549,21 +552,36 @@ export default function App() {
         )}
       </main>
 
-      <AnimatePresence>
-        {selectedPost && (
-          <PostModal 
-            post={selectedPost} 
-            nextPost={postIndex < filteredPosts.length - 1 ? filteredPosts[postIndex + 1] : undefined}
-            prevPost={postIndex > 0 ? filteredPosts[postIndex - 1] : undefined}
-            onClose={() => setSelectedPost(null)} 
-            onNextPost={onNextPost} 
-            onPrevPost={onPrevPost} 
-            hasNextPost={postIndex < filteredPosts.length - 1} 
-            hasPrevPost={postIndex > 0} 
-            profilePic={profilePic} 
-          />
-        )}
-      </AnimatePresence>
+      {/*
+        Mobile opens a real scrolling feed page, the way Instagram does; desktop
+        keeps the modal, where a centred sheet with side arrows fits the pointer.
+      */}
+      {selectedPost && isMobile ? (
+        <PostFeed
+          posts={filteredPosts}
+          initialPostId={selectedPost.id}
+          profilePic={profilePic}
+          title={activeTab === 'reels' ? 'Reels' : 'Posts'}
+          onClose={() => setSelectedPost(null)}
+          onActivePostChange={setSelectedPost}
+        />
+      ) : (
+        <AnimatePresence>
+          {selectedPost && (
+            <PostModal
+              post={selectedPost}
+              nextPost={postIndex < filteredPosts.length - 1 ? filteredPosts[postIndex + 1] : undefined}
+              prevPost={postIndex > 0 ? filteredPosts[postIndex - 1] : undefined}
+              onClose={() => setSelectedPost(null)}
+              onNextPost={onNextPost}
+              onPrevPost={onPrevPost}
+              hasNextPost={postIndex < filteredPosts.length - 1}
+              hasPrevPost={postIndex > 0}
+              profilePic={profilePic}
+            />
+          )}
+        </AnimatePresence>
+      )}
       <AnimatePresence>{showStoryViewer && allStories.length > 0 && <StoryViewer stories={allStories} onClose={() => setShowStoryViewer(false)} profilePic={profilePic} />}</AnimatePresence>
       <AnimatePresence>
         {activeHighlight && (
