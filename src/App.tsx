@@ -632,7 +632,7 @@ export default function App() {
       {!isScanning && (
         <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-xs text-gray-400 space-y-4 text-black">
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 uppercase tracking-tight text-black"><span>Meta</span><span>About</span><span>Blog</span><span>Jobs</span><span>Help</span><span>API</span><span>Privacy</span><span>Terms</span><span>Locations</span><span>Instagram Lite</span><span>Threads</span><span>Contact Uploading & Non-Users</span><span>Meta Verified</span></div>
-          <div className="text-black/40 text-black">© 2026 InstaArchive Viewer</div>
+          <div className="text-black/40 text-black">© 2026 InstaArchive Viewer · v{__APP_VERSION__}</div>
         </footer>
       )}
     </div>

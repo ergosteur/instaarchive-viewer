@@ -14,7 +14,7 @@ const updateSW = registerSW({
       setInterval(() => {
         r.update();
       }, 60 * 60 * 1000);
-      console.log('[PWA] Service Worker registered and update interval set.');
+      console.log(`[PWA] v${__APP_VERSION__} registered; hourly update checks enabled.`);
     }
   },
   onNeedRefresh() {
