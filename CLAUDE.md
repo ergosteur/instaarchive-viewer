@@ -76,7 +76,11 @@ Images over 1MiB are downscaled in a Web Worker via `OffscreenCanvas`. The queue
 
 ### Profile tabs (`src/lib/post-tabs.ts`)
 
-The grid holds **everything**, reels included, and the Reels tab is a *filtered view* of that same set — as on Instagram. Only the Reels tab filters. The tabs were mutually exclusive until v1.7.0, which hid a lot: 1100 of `groupfandom`'s 3813 posts and 533 of `for.member`'s 1225 never appeared in the grid at all.
+The grid holds **everything**, reels included, and the Reels tab is a *filtered view* of that same set. Only the Reels tab filters. The tabs were mutually exclusive until v1.7.0, which hid a lot: 1100 of `groupfandom`'s 3813 posts and 533 of `for.member`'s 1225 never appeared in the grid at all.
+
+This *approximates* Instagram rather than matching it. Instagram's grid includes a reel only if the creator shared it to feed — a per-post choice, measured live on 2026-08-16: `official_band` had 21 reels in its first 34 grid tiles, `4utumn07` just 1 in 214. That flag appears nowhere in an archive (JD2 stores no metadata, and Instaloader's `product_type` says what a post *is*, not whether it was shared to feed), so showing everything is the closest reachable behaviour. Instagram's "N posts" counter equals its grid, which is why the header counts `postsForTab(allPosts, 'posts')` and not `allPosts` — the raw list still holds both copies of a double-fetched post.
+
+When checking the live site, note that grid reels link to `/reel/<code>/` while ordinary posts link to `/<user>/p/<code>/`. Matching only `/p/` silently drops every reel, which once produced a confident and completely wrong conclusion that Instagram never shows reels in the grid.
 
 Deciding *what is a reel* has no good answer for most archives. Instagram's own marker is `product_type` on the post's GraphQL node (`clips` = reel, `feed` = ordinary feed video, `igtv`, `story`) — `__typename` is `GraphVideo` for all three, and aspect ratio does not separate them either. But:
 

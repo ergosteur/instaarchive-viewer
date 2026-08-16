@@ -179,6 +179,13 @@ export default function App() {
    */
   const filteredPosts = useMemo(() => postsForTab(allPosts, activeTab), [allPosts, activeTab]);
 
+  /**
+   * Instagram's "N posts" counter equals what its grid holds, so count the grid
+   * rather than `allPosts` — the raw list still holds both copies of any post
+   * fetched into two directories.
+   */
+  const totalPosts = useMemo(() => postsForTab(allPosts, 'posts').length, [allPosts]);
+
   /** Story highlights, grouped into the circles shown under the bio. */
   const highlightGroups = useMemo(() => {
     const groups = new Map<string, Post[]>();
@@ -519,7 +526,7 @@ export default function App() {
                     {allProfilePics.length > 1 && <button onClick={cycleProfilePic} className="bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 text-black"><Layers size={16} />Next Profile Pic</button>}
                   </div>
                 </div>
-                <div className="flex justify-center md:justify-start gap-10 text-sm md:text-base text-black"><div><span className="font-semibold text-black/80 text-black">{allPosts.length}</span> posts</div><div><span className="font-semibold text-black/80 text-black">{(followerCount || 0).toLocaleString()}</span> followers</div><div><span className="font-semibold text-black/80 text-black">{(followingCount || 0).toLocaleString()}</span> following</div></div>
+                <div className="flex justify-center md:justify-start gap-10 text-sm md:text-base text-black"><div><span className="font-semibold text-black/80 text-black">{totalPosts.toLocaleString()}</span> posts</div><div><span className="font-semibold text-black/80 text-black">{(followerCount || 0).toLocaleString()}</span> followers</div><div><span className="font-semibold text-black/80 text-black">{(followingCount || 0).toLocaleString()}</span> following</div></div>
                 <div className="space-y-1 text-black/80 text-black"><div className="font-semibold text-black">{fullName || `@${username}`}</div><div className="text-gray-600 whitespace-pre-wrap max-w-sm mx-auto md:mx-0 text-sm md:text-base text-black">{bio || 'Archived profile viewer for local files.'}</div>{externalUrl && <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="text-blue-900 font-semibold text-sm block hover:underline truncate max-w-[250px] text-black">{externalUrl.replace(/^https?:\/\/(www\.)?/, '')}</a>}</div>
               </div>
             </header>
