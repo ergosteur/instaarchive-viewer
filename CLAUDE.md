@@ -74,6 +74,19 @@ Restoring an archive **rehydrates URLs from `path`**: server archives rebuild HT
 
 Images over 1MiB are downscaled in a Web Worker via `OffscreenCanvas`. The queue is **serial on purpose** — decoding several 50MP+ images at once OOMs the tab. `requestThumbnail` must keep a stable identity (it reads cache state through a ref), or every completed thumbnail re-runs the effect in all mounted thumbnails.
 
+### Profile tabs (`src/lib/post-tabs.ts`)
+
+The grid holds **everything**, reels included, and the Reels tab is a *filtered view* of that same set — as on Instagram. Only the Reels tab filters. The tabs were mutually exclusive until v1.7.0, which hid a lot: 1100 of `groupfandom`'s 3813 posts and 533 of `for.member`'s 1225 never appeared in the grid at all.
+
+Deciding *what is a reel* has no good answer for most archives. Instagram's own marker is `product_type` on the post's GraphQL node (`clips` = reel, `feed` = ordinary feed video, `igtv`, `story`) — `__typename` is `GraphVideo` for all three, and aspect ratio does not separate them either. But:
+
+- Only Instaloader archives carry that metadata, and only newer captures. A survey of `hazelofficial` found `product_type` on 1101 of 5919 sidecars, and just **2** posts marked `clips`.
+- JDownloader archives carry none at all — media plus a `.txt` holding the bare caption.
+
+So the viewer believes a `- reels` sidecar directory when one exists, and otherwise falls back to treating a lone video as a reel. **The fallback is a guess**: it cannot tell a reel from a feed video or an old IGTV upload, and it misses videos inside carousels.
+
+`dedupePostCopies` exists because the JDownloader flow crawls the profile URL and the `/reels/` URL separately (the profile page misses some reels), so the two overlap and a reel can land on disk twice. Those become two posts with distinct directory-scoped ids, which the grid would otherwise render side by side. It dedupes by shortcode, preferring the reels-source copy. It is only safe over `allPosts` — stories and highlights are excluded there, and a shortcode may legitimately appear in both a profile and a highlight.
+
 ### URL state (`src/App.tsx`, `src/lib/routing.ts`)
 
 Paths mirror Instagram: `/<archive>/`, `/<archive>/reels/`, `/<archive>/p/<shortcode>/`. The old `?a=&t=&p=` form is still parsed for existing links but never written. Reserved prefixes (`api`, `archives`, `assets`…) can't be mistaken for a profile name.

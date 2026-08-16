@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { PRESS, prefersReducedMotion } from './lib/motion';
 import { buildPath, findPostBySlug, parseRoute, postSlug, tabForSource } from './lib/routing';
+import { postsForTab } from './lib/post-tabs';
 import { LocalArchiveFile, RemoteArchiveFile } from './lib/archive-files';
 import {
   deleteCachedArchive,
@@ -172,20 +173,11 @@ export default function App() {
   const clearCache = async (name: string) => { await deleteCachedArchive(name); await refreshCachedArchives(); };
 
   /**
-   * Archives with a `- reels` sidecar directory say outright which posts are
-   * reels; only fall back to the "lone video" heuristic for archives that have
-   * no such directory.
+   * The grid shows everything, reels included, and the Reels tab is a filtered
+   * view of the same set — see src/lib/post-tabs.ts for the reel test and for
+   * why a reel can arrive on disk twice.
    */
-  const hasReelSource = useMemo(() => allPosts.some(p => p.source === 'reels'), [allPosts]);
-  const isReel = useCallback((p: Post) => (
-    hasReelSource ? p.source === 'reels' : p.media.length === 1 && p.media[0].type === 'video'
-  ), [hasReelSource]);
-
-  const filteredPosts = useMemo(() => {
-    if (activeTab === 'reels') return allPosts.filter(isReel);
-    if (activeTab === 'posts') return allPosts.filter(p => !isReel(p));
-    return [];
-  }, [allPosts, activeTab, isReel]);
+  const filteredPosts = useMemo(() => postsForTab(allPosts, activeTab), [allPosts, activeTab]);
 
   /** Story highlights, grouped into the circles shown under the bio. */
   const highlightGroups = useMemo(() => {
