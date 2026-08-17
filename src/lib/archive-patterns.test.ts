@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArchiveFilename, scopedPostId } from './archive-patterns';
+import { canonicalItemId, parseArchiveFilename, scopedPostId } from './archive-patterns';
 
 describe('parseArchiveFilename — Instagram export format', () => {
   it('parses a single-image post', () => {
@@ -187,5 +187,41 @@ describe('dateFromMtime', () => {
     const p = parseArchiveFilename('4utumn07 - C-IImhvpFuk.jpg', 'highlight')!;
     expect(p.date).toBe('');
     expect(p.dateFromMtime).toBe(false);
+  });
+});
+
+/**
+ * JDownloader wrote story-shaped names for highlights during one period, so
+ * the same item exists under two conventions. They must be one post.
+ */
+describe('canonicalItemId', () => {
+  it('collapses the two highlight naming conventions onto one id', () => {
+    const dir = 'story highlights - 4utumn07 - Sunstory';
+    const undated = parseArchiveFilename('4utumn07 - C5dQPEYpd9W.mp4', 'highlight', 1)!;
+    const dated = parseArchiveFilename('2024-04-07_4utumn07 - 01 - C5dQPEYpd9W.mp4', 'highlight')!;
+    expect(scopedPostId(dated.postId, 'highlight', dir))
+      .toBe(scopedPostId(undated.postId, 'highlight', dir));
+  });
+
+  it('does the same for stories', () => {
+    const a = parseArchiveFilename('2025-10-26_u - 2 - DQRuDx9iW5Q.jpg', 'stories')!;
+    expect(scopedPostId(a.postId, 'stories', 'story - u')).toBe('story - u/DQRuDx9iW5Q');
+  });
+
+  it('keeps distinct story items distinct', () => {
+    const a = parseArchiveFilename('2026-08-13_u - 1 - Db-UTJcCUUr.mp4', 'stories')!;
+    const b = parseArchiveFilename('2026-08-13_u - 2 - Db-oNJ1CWQ4.mp4', 'stories')!;
+    expect(scopedPostId(a.postId, 'stories', 'story - u'))
+      .not.toBe(scopedPostId(b.postId, 'stories', 'story - u'));
+  });
+
+  it('leaves a shortcode that merely starts with digits alone', () => {
+    expect(canonicalItemId('4utumn07')).toBe('4utumn07');
+    expect(canonicalItemId('C5dQPEYpd9W')).toBe('C5dQPEYpd9W');
+    expect(canonicalItemId('12345')).toBe('12345');
+  });
+
+  it('does not touch posts, whose ids are permalinks', () => {
+    expect(scopedPostId('01 - ABC', 'posts')).toBe('01 - ABC');
   });
 });

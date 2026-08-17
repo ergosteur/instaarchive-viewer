@@ -101,11 +101,35 @@ export const parseArchiveFilename = (
 };
 
 /**
+ * A leading per-day ordinal on a story or highlight id: `01 - C5dQPEYpd9W`.
+ *
+ * JDownloader wrote story-shaped names for highlights during one period of its
+ * life, so the same item exists as both `user - CODE.jpg` and
+ * `date_user - 01 - CODE.jpg`. Those parse to different ids and the viewer
+ * shows the item twice. The ordinal carries no information the shortcode does
+ * not — it is a position within a day's stories, and the shortcode is already
+ * unique — so it is dropped.
+ */
+const LEADING_ORDINAL = /^\d+ - (?=[A-Za-z0-9_-]+$)/;
+
+/** Strip the ordinal so both naming conventions land on the same post. */
+export const canonicalItemId = (postId: string): string =>
+  postId.replace(LEADING_ORDINAL, '');
+
+/**
  * Namespace a post ID by its source directory.
  *
  * Base-profile IDs are left untouched so existing permalinks keep working;
  * sidecar IDs are prefixed so a shortcode appearing in both the profile and a
  * highlight stays two distinct posts.
+ *
+ * Story and highlight ids are canonicalised first, so an item fetched under
+ * two different naming conventions is one post rather than two.
  */
-export const scopedPostId = (postId: string, kind: SourceKind, dir?: string): string =>
-  kind === 'posts' ? postId : `${dir ?? kind}/${postId}`;
+export const scopedPostId = (postId: string, kind: SourceKind, dir?: string): string => {
+  if (kind === 'posts') return postId;
+  const id = (kind === 'stories' || kind === 'highlight')
+    ? canonicalItemId(postId)
+    : postId;
+  return `${dir ?? kind}/${id}`;
+};
