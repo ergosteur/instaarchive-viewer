@@ -116,3 +116,43 @@ describe('scopedPostId', () => {
     expect(inPosts).not.toBe(inHighlight);
   });
 });
+
+/**
+ * gallery-dl is replacing JDownloader as the fetcher (docs/gallery-dl.md).
+ * Its naming differs cosmetically, and these cases pin down that the two
+ * interoperate so a mixed archive parses identically.
+ */
+describe('gallery-dl / JDownloader naming interop', () => {
+  it('treats a single-media post the same with or without an index', () => {
+    const jd2 = parseArchiveFilename('2023-04-19_4utumn07 - CrORBIcJJbM.mp4')!;
+    const gdl = parseArchiveFilename('2023-04-19_4utumn07 - CrORBIcJJbM - 1.mp4')!;
+    expect(jd2.postId).toBe(gdl.postId);
+    expect(jd2.index).toBe(gdl.index);
+    expect(jd2.index).toBe(1);
+  });
+
+  it('normalises zero-padded carousel indices', () => {
+    // JD2 pads to the width of the media count (10+ items -> "01"), and
+    // gallery-dl's count can be one higher, so the same post may be padded
+    // by one tool and not the other.
+    expect(parseArchiveFilename('2024-04-17_4utumn07 - C53YPQzp7Wj - 09.jpg')!.index).toBe(9);
+    expect(parseArchiveFilename('2024-04-17_4utumn07 - C53YPQzp7Wj - 9.jpg')!.index).toBe(9);
+    expect(parseArchiveFilename('2023-11-03_4utumn07 - CzM8Uf6B6H_ - 01.jpg')!.index).toBe(1);
+  });
+
+  it('reads a gallery-dl story name, which carries a per-item shortcode', () => {
+    const p = parseArchiveFilename('2026-08-16_official_band - DcF9OyhBJ1H.jpg', 'stories')!;
+    expect(p.postId).toBe('DcF9OyhBJ1H');
+    expect(p.date).toBe('2026-08-16');
+  });
+
+  it('gives a dated highlight a real date instead of the mtime fallback', () => {
+    const mtime = Date.parse('2026-08-17T00:00:00Z');
+    const undated = parseArchiveFilename('4utumn07 - C-IImhvpFuk.jpg', 'highlight', mtime)!;
+    const dated = parseArchiveFilename('2024-08-04_4utumn07 - C-IImhvpFuk.jpg', 'highlight', mtime)!;
+    // Same item either way, so re-fetching cannot split it into two posts.
+    expect(dated.postId).toBe(undated.postId);
+    expect(undated.date).toBe('2026-08-17');
+    expect(dated.date).toBe('2024-08-04');
+  });
+});
