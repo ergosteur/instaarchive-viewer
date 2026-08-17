@@ -30,6 +30,15 @@ export interface ParsedFilename {
   index: number;
   ext: string;
   isStory: boolean;
+  /**
+   * True when `date` is the file's mtime rather than anything Instagram said.
+   *
+   * Only highlights fetched by JDownloader lack a date in the filename, and
+   * their mtime is just when the file was written. Callers should let any real
+   * date win over this one — the same item is often also present under a
+   * gallery-dl name that does carry the date.
+   */
+  dateFromMtime: boolean;
 }
 
 /**
@@ -54,6 +63,7 @@ export const parseArchiveFilename = (
       index: indexStr ? parseInt(indexStr, 10) : 1,
       ext,
       isStory: Boolean(story),
+      dateFromMtime: false,
     };
   }
 
@@ -67,6 +77,7 @@ export const parseArchiveFilename = (
       index: indexStr ? parseInt(indexStr, 10) : 1,
       ext,
       isStory: Boolean(story),
+      dateFromMtime: false,
     };
   }
 
@@ -81,6 +92,7 @@ export const parseArchiveFilename = (
         index: 1,
         ext,
         isStory: false,
+        dateFromMtime: Boolean(mtime),
       };
     }
   }

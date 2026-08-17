@@ -98,3 +98,44 @@ describe('postsForTab', () => {
     expect(postsForTab([post('A')], 'saved')).toEqual([]);
   });
 });
+
+/**
+ * Once an archive carries gallery-dl sidecars, the guesswork above is replaced
+ * by Instagram's own classification. These are the cases the heuristic got
+ * wrong (see docs/gallery-dl.md).
+ */
+describe('explicit isReel from a sidecar', () => {
+  it('beats the lone-video heuristic for an ordinary feed video', () => {
+    // A single mp4 that Instagram calls a post, not a reel — indistinguishable
+    // by shape alone.
+    const posts = [video('DbdG9L9jU4m', { isReel: false })];
+    expect(postsForTab(posts, 'reels')).toEqual([]);
+    expect(postsForTab(posts, 'posts')).toHaveLength(1);
+  });
+
+  it('recognises a reel that lives in the profile grid', () => {
+    // Shared to feed, so it sits in the base directory with source 'posts'.
+    const posts = [post('A'), video('C8FHM6EJl15', { source: 'posts', isReel: true })];
+    expect(postsForTab(posts, 'reels').map(p => p.id)).toEqual(['C8FHM6EJl15']);
+    expect(postsForTab(posts, 'posts')).toHaveLength(2);
+  });
+
+  it('beats the directory when both are present', () => {
+    const posts = [
+      video('u - reels/A', { source: 'reels', isReel: false }),
+      video('u - reels/B', { source: 'reels' }),
+    ];
+    // A is a feed video that the reels tab happened to return; B is unlabelled
+    // and falls back to its directory.
+    expect(postsForTab(posts, 'reels').map(p => p.id)).toEqual(['u - reels/B']);
+  });
+
+  it('falls back per post, so a mixed archive still works', () => {
+    const posts = [
+      video('labelled', { isReel: true }),
+      video('unlabelled'),
+      carousel('C'),
+    ];
+    expect(postsForTab(posts, 'reels').map(p => p.id)).toEqual(['labelled', 'unlabelled']);
+  });
+});

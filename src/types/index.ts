@@ -37,6 +37,12 @@ export interface Post {
   isStory?: boolean;
   /** Defaults to 'posts' for archives without sidecar directories. */
   source?: SourceKind;
+  /**
+   * Instagram's own answer to "is this a reel", from a gallery-dl `.json`
+   * sidecar. Undefined when the archive carries no such sidecar, which is when
+   * the viewer has to fall back to guessing — see src/lib/post-tabs.ts.
+   */
+  isReel?: boolean;
   /** Highlight this post belongs to, for source === 'highlight'. */
   highlightTitle?: string;
 }

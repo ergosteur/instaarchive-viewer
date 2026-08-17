@@ -10,6 +10,7 @@ describe('parseArchiveFilename — Instagram export format', () => {
       index: 1,
       ext: 'mp4',
       isStory: false,
+      dateFromMtime: false,
     });
   });
 
@@ -154,5 +155,37 @@ describe('gallery-dl / JDownloader naming interop', () => {
     expect(dated.postId).toBe(undated.postId);
     expect(undated.date).toBe('2026-08-17');
     expect(dated.date).toBe('2024-08-04');
+  });
+});
+
+/**
+ * Highlights are the only files with no date in the name, so they fall back to
+ * mtime — which is when the file was written, not when it was posted. Callers
+ * need to know the difference to let a real date win.
+ */
+describe('dateFromMtime', () => {
+  const mtime = Date.parse('2026-08-17T00:00:00Z');
+
+  it('flags an undated highlight name as mtime-dated', () => {
+    const p = parseArchiveFilename('4utumn07 - C-IImhvpFuk.jpg', 'highlight', mtime)!;
+    expect(p.date).toBe('2026-08-17');
+    expect(p.dateFromMtime).toBe(true);
+  });
+
+  it('does not flag a highlight that carries its own date', () => {
+    const p = parseArchiveFilename('2024-08-04_4utumn07 - C-IImhvpFuk.jpg', 'highlight', mtime)!;
+    expect(p.date).toBe('2024-08-04');
+    expect(p.dateFromMtime).toBe(false);
+  });
+
+  it('never flags ordinary post or Instaloader names', () => {
+    expect(parseArchiveFilename('2023-04-19_u - ABC.mp4', 'posts', mtime)!.dateFromMtime).toBe(false);
+    expect(parseArchiveFilename('2024-01-01_12-00-00_UTC.jpg', 'posts', mtime)!.dateFromMtime).toBe(false);
+  });
+
+  it('leaves the date empty rather than guessing when no mtime is given', () => {
+    const p = parseArchiveFilename('4utumn07 - C-IImhvpFuk.jpg', 'highlight')!;
+    expect(p.date).toBe('');
+    expect(p.dateFromMtime).toBe(false);
   });
 });

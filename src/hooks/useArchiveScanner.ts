@@ -4,6 +4,7 @@ import { XzReadableStream } from 'xz-decompress';
 import { ArchiveFile, CacheData, Post, ServerArchive } from '../types';
 import { setCachedArchive, getDirectoryHandle } from '../lib/archive-cache';
 import { parseArchiveFilename, scopedPostId, EXPORT_RE, INSTALOADER_RE } from '../lib/archive-patterns';
+import { isGalleryDlSidecar, sidecarDate, sidecarIsReel } from '../lib/gallery-dl-sidecar';
 
 const hasDirectoryHandle = async (name: string) => Boolean(await getDirectoryHandle(name));
 
@@ -142,6 +143,8 @@ export const useArchiveScanner = (
 
     try {
       const postsMap = new Map<string, Partial<Post>>();
+      // Posts whose date is only a file mtime, so a real date can replace it.
+      const weakDates = new Set<string>();
       const mediaFilesMap = new Map<string, ArchiveFile>();
       const discoveredProfilePics: { name: string, url: string }[] = [];
       const allImageFiles: ArchiveFile[] = [];
@@ -297,8 +300,18 @@ export const useArchiveScanner = (
             if (!post) {
               post = { id: postId, date, username: user, caption: '', media: [], isStory, source: kind, highlightTitle: file.source?.title };
               postsMap.set(postId, post);
+              if (parsed.dateFromMtime) weakDates.add(postId);
             }
             else if (isStory) post.isStory = true;
+
+            // A JDownloader highlight filename carries no date, so it is dated
+            // by mtime — but the same item is usually also present under a
+            // gallery-dl name that does carry one. Let the real date win
+            // regardless of which file the scan happened to reach first.
+            if (!parsed.dateFromMtime && date && weakDates.has(postId)) {
+              post.date = date;
+              weakDates.delete(postId);
+            }
 
             const lowerExt = ext.toLowerCase();
             if (lowerExt === 'txt') {
@@ -306,7 +319,19 @@ export const useArchiveScanner = (
             } else if (lowerExt === 'json' || lowerName.endsWith('.json.xz')) {
               try {
                 const data = lowerName.endsWith('.xz') ? await parseXZFile(file) : JSON.parse(await file.text());
-                if (data) {
+                if (isGalleryDlSidecar(data)) {
+                  // The only format that states what a post is rather than
+                  // leaving it to be inferred from filenames.
+                  if (data.description) post.caption = data.description;
+                  const reel = sidecarIsReel(data);
+                  if (reel !== undefined) post.isReel = reel;
+                  if (data.type === 'story') post.isStory = true;
+                  const day = sidecarDate(data);
+                  if (day && weakDates.has(postId)) {
+                    post.date = day;
+                    weakDates.delete(postId);
+                  }
+                } else if (data) {
                   const node = data.node || data; const iphone = node.iphone_struct || {};
                   const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || node.caption?.text || iphone.caption?.text || '';
                   if (captionText) post.caption = captionText;

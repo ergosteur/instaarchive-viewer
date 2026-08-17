@@ -41,11 +41,16 @@ export const hasReelSource = (posts: Post[]): boolean => posts.some(p => p.sourc
  * or an old IGTV upload, all three of which are plain `GraphVideo` nodes
  * distinguished only by `product_type`.
  */
-export const makeIsReel = (posts: Post[]): ((post: Post) => boolean) => (
-  hasReelSource(posts)
+export const makeIsReel = (posts: Post[]): ((post: Post) => boolean) => {
+  const guess = hasReelSource(posts)
     ? (post: Post) => post.source === 'reels'
-    : (post: Post) => post.media.length === 1 && post.media[0]?.type === 'video'
-);
+    : (post: Post) => post.media.length === 1 && post.media[0]?.type === 'video';
+
+  // `isReel` comes from a gallery-dl sidecar and is Instagram's own answer, so
+  // it beats both fallbacks — per post, since an archive is usually a mix of
+  // files fetched before and after sidecars existed.
+  return (post: Post) => post.isReel ?? guess(post);
+};
 
 /** Preference order when the same post was fetched into more than one directory. */
 const SOURCE_RANK: Record<SourceKind, number> = { reels: 0, posts: 1, stories: 2, highlight: 3 };

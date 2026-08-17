@@ -64,6 +64,18 @@ story highlights - 4utumn07 - Sunstory   -> highlight "Sunstory"
 
 Results are cached to IndexedDB. Media records store a stable `path`; **`url` is not persistable** for local archives because blob URLs die with the document.
 
+Three different JSON shapes turn up as `.json`, so they are told apart structurally, not by filename (`src/lib/gallery-dl-sidecar.ts`):
+
+| shape | marker |
+|---|---|
+| Instagram export manifest | top-level `media` array |
+| Instaloader `.json.xz` | GraphQL node under `node` / `__typename` |
+| gallery-dl sidecar | flat, `post_shortcode` + `type`, none of the above |
+
+The gallery-dl sidecar is the only source that states what a post *is*: its `type` (`post` / `reel` / `story` / `highlight`) is Instagram's own classification, so `post.isReel` set from it beats every fallback in `post-tabs.ts`. This matters — of the 781 items in `official_band - reels`, the sidecars say only **360 are reels**; the other 421 are ordinary feed videos the clips endpoint returns via `include_feed_video`. Directory-based classification counted all 781.
+
+**Dates: a real date always beats an mtime.** Only JDownloader highlights lack a date in the filename, and `parseArchiveFilename` marks those with `dateFromMtime` so the scanner can upgrade them when the same item also appears under a dated name. Without it the date depended on which file the scan happened to reach first.
+
 ### Cache and local-archive persistence (`src/lib/archive-cache.ts`)
 
 IndexedDB keys are namespaced (`archive:`, `thumb:`, `handle:`) so listing archives does not deserialize every cached thumbnail blob, and thumbnails are scoped per archive to avoid cross-archive collisions.
