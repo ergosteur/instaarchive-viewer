@@ -74,7 +74,7 @@ Three different JSON shapes turn up as `.json`, so they are told apart structura
 
 The gallery-dl sidecar is the only source that states what a post *is*: its `type` (`post` / `reel` / `story` / `highlight`) is Instagram's own classification, so `post.isReel` set from it beats every fallback in `post-tabs.ts`. This matters — of the 781 items in `official_band - reels`, the sidecars say only **360 are reels**; the other 421 are ordinary feed videos the clips endpoint returns via `include_feed_video`. Directory-based classification counted all 781.
 
-**Dates: a real date always beats an mtime.** Only JDownloader highlights lack a date in the filename, and `parseArchiveFilename` marks those with `dateFromMtime` so the scanner can upgrade them when the same item also appears under a dated name. Without it the date depended on which file the scan happened to reach first.
+**Dates are ranked, not last-write-wins** (`src/lib/post-dates.ts`): sidecar (what Instagram reported) beats filename (what the fetcher wrote) beats mtime (when the file hit disk, and unrelated to when it was posted). Ties keep the incumbent. Several files describe one post and they are scanned in directory order, not in order of trustworthiness, so without the ranking the date was decided by whichever file came first. Only JDownloader highlights fall to mtime at all — `parseArchiveFilename` flags those via `dateFromMtime`.
 
 ### Cache and local-archive persistence (`src/lib/archive-cache.ts`)
 

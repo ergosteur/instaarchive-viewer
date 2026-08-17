@@ -5,6 +5,7 @@ import { ArchiveFile, CacheData, Post, ServerArchive } from '../types';
 import { setCachedArchive, getDirectoryHandle } from '../lib/archive-cache';
 import { parseArchiveFilename, scopedPostId, EXPORT_RE, INSTALOADER_RE } from '../lib/archive-patterns';
 import { isGalleryDlSidecar, sidecarDate, sidecarIsReel } from '../lib/gallery-dl-sidecar';
+import { DateSource, shouldReplaceDate } from '../lib/post-dates';
 
 const hasDirectoryHandle = async (name: string) => Boolean(await getDirectoryHandle(name));
 
@@ -143,8 +144,17 @@ export const useArchiveScanner = (
 
     try {
       const postsMap = new Map<string, Partial<Post>>();
-      // Posts whose date is only a file mtime, so a real date can replace it.
-      const weakDates = new Set<string>();
+      /**
+       * Which source supplied each post's date, so a better one can replace it.
+       * Sidecar beats filename beats mtime — see src/lib/post-dates.ts.
+       */
+      const dateSources = new Map<string, DateSource>();
+      const applyDate = (postId: string, post: Partial<Post>, date: string, source: DateSource) => {
+        const current = post.date ? { date: post.date, source: dateSources.get(postId) ?? 'mtime' } : undefined;
+        if (!shouldReplaceDate(current, { date, source })) return;
+        post.date = date;
+        dateSources.set(postId, source);
+      };
       const mediaFilesMap = new Map<string, ArchiveFile>();
       const discoveredProfilePics: { name: string, url: string }[] = [];
       const allImageFiles: ArchiveFile[] = [];
@@ -300,18 +310,13 @@ export const useArchiveScanner = (
             if (!post) {
               post = { id: postId, date, username: user, caption: '', media: [], isStory, source: kind, highlightTitle: file.source?.title };
               postsMap.set(postId, post);
-              if (parsed.dateFromMtime) weakDates.add(postId);
             }
             else if (isStory) post.isStory = true;
 
-            // A JDownloader highlight filename carries no date, so it is dated
-            // by mtime — but the same item is usually also present under a
-            // gallery-dl name that does carry one. Let the real date win
-            // regardless of which file the scan happened to reach first.
-            if (!parsed.dateFromMtime && date && weakDates.has(postId)) {
-              post.date = date;
-              weakDates.delete(postId);
-            }
+            // Files describing one post are scanned in directory order, not in
+            // order of trustworthiness, so every date goes through the ranking
+            // in post-dates.ts rather than last-write-wins.
+            applyDate(postId, post, date, parsed.dateFromMtime ? 'mtime' : 'filename');
 
             const lowerExt = ext.toLowerCase();
             if (lowerExt === 'txt') {
@@ -326,11 +331,7 @@ export const useArchiveScanner = (
                   const reel = sidecarIsReel(data);
                   if (reel !== undefined) post.isReel = reel;
                   if (data.type === 'story') post.isStory = true;
-                  const day = sidecarDate(data);
-                  if (day && weakDates.has(postId)) {
-                    post.date = day;
-                    weakDates.delete(postId);
-                  }
+                  applyDate(postId, post, sidecarDate(data), 'sidecar');
                 } else if (data) {
                   const node = data.node || data; const iphone = node.iphone_struct || {};
                   const captionText = node.edge_media_to_caption?.edges?.[0]?.node?.text || node.caption?.text || iphone.caption?.text || '';
