@@ -9,3 +9,5 @@ coverage/
 !.env.example
 _sample-archives
 _gemini-plans
+__pycache__/
+*.pyc
